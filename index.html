@@ -138,7 +138,7 @@
     .photo-wrapper {
       position: relative;
       width: 100%;
-      padding-top: 177.77%; /* 16:9 inverted = 9:16 aspect ratio */
+      padding-top: 177.77%; /* 9:16 aspect ratio */
       background-color: #0b0f19;
       overflow: hidden;
     }
@@ -176,7 +176,7 @@
       font-weight: 600;
     }
 
-    /* Control Panel Drawer / Modal */
+    /* Control Panel Drawer */
     .panel-overlay {
       position: fixed;
       inset: 0;
@@ -298,8 +298,8 @@
       <span>🦁</span> SeeLion Live Cam
     </div>
     <div class="header-actions">
-      <button class="btn btn-secondary" onclick="togglePanel()">⚙️</button>
-      <button class="btn btn-primary" onclick="manualCaptureTrigger()">📸 (Alt+C)</button>
+      <button class="btn btn-secondary" onclick="togglePanel()">⚙️ Panel Kontrol</button>
+      <button class="btn btn-primary" onclick="manualCaptureTrigger()">📸 Ambil Foto (Alt+C)</button>
     </div>
   </header>
 
@@ -308,13 +308,13 @@
     <div class="gallery-header">
       <div>
         <h2>4 Foto Terkini</h2>
-        <p style="color: var(--text-muted); font-size: 0.875rem;">Otomatis</p>
+        <p style="color: var(--text-muted); font-size: 0.875rem;">Otomatis diperbarui via GitHub API</p>
       </div>
-      <button class="btn btn-secondary" onclick="refreshGallery()">🔄</button>
+      <button class="btn btn-secondary" onclick="refreshGallery()">🔄 Refresh Galeri</button>
     </div>
 
     <div class="gallery-grid" id="galleryContainer">
-      <!-- 4 Portrait Photo Cards -->
+      <!-- 4 Portrait Cards -->
       <div class="photo-card" id="card-1">
         <div class="photo-wrapper"><img src="" alt="Photo 1" onerror="handleImgError(this)" /></div>
         <div class="photo-meta"><span class="badge">Terbaru #1</span><span class="timestamp">-</span></div>
@@ -338,16 +338,16 @@
   <div class="panel-overlay" id="panelOverlay" onclick="togglePanel()"></div>
   <div class="panel" id="controlPanel">
     <div class="panel-header">
-      <!-- h3>Panel Pengaturan</h3 -->
+      <h3>Panel Pengaturan</h3>
       <button class="btn btn-secondary" style="padding: 0.25rem 0.5rem;" onclick="togglePanel()">✕</button>
     </div>
 
     <!-- GitHub Token Input -->
     <div class="form-group">
       <label for="ghToken">GitHub Personal Access Token (PAT):</label>
-      <input type="password" id="ghToken" placeholder="ghp_xxxxxxxxxxxx" />
-      <button class="btn btn-secondary" style="margin-top: 0.25rem;" onclick="saveToken()">Simpan Token</button>
-  </div>
+      <input type="password" id="ghToken" placeholder="Otomatis dari Cloudflare / Input manual" />
+      <button class="btn btn-secondary" style="margin-top: 0.25rem;" onclick="saveToken()">Simpan Token Manual</button>
+    </div>
 
     <!-- Live Webcam Preview -->
     <div class="form-group">
@@ -373,227 +373,277 @@
   <canvas id="cropCanvas"></canvas>
 
   <script>
-  // --- KONFIGURASI REPO & PROXY ---
-  const REPO_OWNER = "tryout-gratis";
-  const REPO_NAME = "lion";
-  const PHOTOS_PATH = "photos"; 
-  const MAX_PHOTOS = 4;
-  const AUTO_CAPTURE_INTERVAL = 30 * 60 * 1000; // 30 Menit
-  
-  // Ganti dengan URL asli Cloudflare Worker / Proxy Backend Anda
-  const PROXY_WORKER_URL = "https://seelion.pages.dev";
+    // --- KONFIGURASI REPO ---
+    const REPO_OWNER = "tryout-gratis";
+    const REPO_NAME = "lion";
+    const PHOTOS_PATH = "photos";
+    const MAX_PHOTOS = 4;
+    const AUTO_CAPTURE_INTERVAL = 30 * 60 * 1000; // 30 Menit
 
-  let autoCaptureTimer = null;
-  let webcamStream = null;
-  const video = document.getElementById("webcamVideo");
-  const canvas = document.getElementById("cropCanvas");
+    let autoCaptureTimer = null;
+    let webcamStream = null;
+    const video = document.getElementById("webcamVideo");
+    const canvas = document.getElementById("cropCanvas");
 
-  // --- INISIALISASI ---
-  window.addEventListener("DOMContentLoaded", () => {
-    const savedToken = localStorage.getItem("gh_pat_token");
-    if (savedToken) {
-      document.getElementById("ghToken").value = savedToken;
-    }
-    initWebcam();
-    refreshGallery();
-    setInterval(refreshGallery, 30000);
-  });
+    // --- INISIALISASI ---
+    window.addEventListener("DOMContentLoaded", async () => {
+      // 1. Coba ambil token dari Cloudflare Pages Variables terlebih dahulu
+      await loadTokenFromCloudflare();
 
-  // Global Key Listener: Alt + C
-  window.addEventListener("keydown", (e) => {
-    if (e.altKey && (e.key === "c" || e.key === "C")) {
-      e.preventDefault();
-      manualCaptureTrigger();
-    }
-  });
+      // 2. Jika tidak ada di Cloudflare, ambil dari localStorage
+      const savedToken = localStorage.getItem("gh_pat_token");
+      if (savedToken) {
+        document.getElementById("ghToken").value = savedToken;
+      }
 
-  function log(msg, type = "info") {
-    const logBox = document.getElementById("logBox");
-    const time = new Date().toLocaleTimeString();
-    const div = document.createElement("div");
-    div.className = `log-${type}`;
-    div.innerText = `[${time}] ${msg}`;
-    logBox.prepend(div);
-  }
+      initWebcam();
+      refreshGallery();
+      setInterval(refreshGallery, 30000); // Auto-refresh galeri setiap 30 detik
+    });
 
-  function togglePanel() {
-    document.getElementById("controlPanel").classList.toggle("active");
-    document.getElementById("panelOverlay").classList.toggle("active");
-  }
-
-  function saveToken() {
-    const token = document.getElementById("ghToken").value.trim();
-    if (!token) {
-      alert("Masukkan token yang valid!");
-      return;
-    }
-    localStorage.setItem("gh_pat_token", token);
-    log("Token GitHub berhasil disimpan ke LocalStorage.", "success");
-  }
-
-  function getToken() {
-    return localStorage.getItem("gh_pat_token") || document.getElementById("ghToken").value.trim();
-  }
-
-  // --- AKSES WEBCAM & PORTRAIT CROP ---
-  async function initWebcam() {
-    try {
-      webcamStream = await navigator.mediaDevices.getUserMedia({
-        video: { width: { ideal: 1920 }, height: { ideal: 1080 } },
-        audio: false
-      });
-      video.srcObject = webcamStream;
-      log("Webcam berhasil diakses.", "success");
-    } catch (err) {
-      log("Gagal mengakses webcam: " + err.message, "error");
-    }
-  }
-
-  function capturePortraitBase64() {
-    const vWidth = video.videoWidth;
-    const vHeight = video.videoHeight;
-
-    if (!vWidth || !vHeight) {
-      throw new Error("Frame webcam belum siap.");
+    // Ambil token otomatis dari Cloudflare Functions (/api/token)
+    async function loadTokenFromCloudflare() {
+      try {
+        const res = await fetch("/api/token");
+        if (res.ok) {
+          const data = await res.json();
+          if (data.token) {
+            localStorage.setItem("gh_pat_token", data.token);
+            document.getElementById("ghToken").value = data.token;
+            log("Token GitHub berhasil dimuat dari Cloudflare Variables.", "success");
+            return;
+          }
+        }
+      } catch (err) {
+        // Abaikan jika dibuka di luar Cloudflare Pages (cth: GitHub Pages)
+      }
     }
 
-    const targetRatio = 9 / 16;
-    let sWidth, sHeight, sx, sy;
-
-    if (vWidth / vHeight > targetRatio) {
-      sHeight = vHeight;
-      sWidth = vHeight * targetRatio;
-      sx = (vWidth - sWidth) / 2;
-      sy = 0;
-    } else {
-      sWidth = vWidth;
-      sHeight = vWidth / targetRatio;
-      sx = 0;
-      sy = (vHeight - sHeight) / 2;
-    }
-
-    canvas.width = 720;
-    canvas.height = 1280;
-    const ctx = canvas.getContext("2d");
-    
-    ctx.drawImage(video, sx, sy, sWidth, sHeight, 0, 0, canvas.width, canvas.height);
-    const dataUrl = canvas.toDataURL("image/jpeg", 0.85);
-    return dataUrl.split(",")[1];
-  }
-
-  // --- GITHUB API READ & PROXY UPLOAD ---
-  async function fetchFileInfo(filename, token) {
-    const res = await fetch(`https://api.github.com/repos/${REPO_OWNER}/${REPO_NAME}/contents/${PHOTOS_PATH}/${filename}`, {
-      headers: {
-        "Authorization": `Bearer ${token}`,
-        "Accept": "application/vnd.github+json"
+    // Global Key Listener: Alt + C
+    window.addEventListener("keydown", (e) => {
+      if (e.altKey && (e.key === "c" || e.key === "C")) {
+        e.preventDefault();
+        manualCaptureTrigger();
       }
     });
-    if (res.status === 200) {
+
+    function log(msg, type = "info") {
+      const logBox = document.getElementById("logBox");
+      const time = new Date().toLocaleTimeString();
+      const div = document.createElement("div");
+      div.className = `log-${type}`;
+      div.innerText = `[${time}] ${msg}`;
+      logBox.prepend(div);
+    }
+
+    function togglePanel() {
+      document.getElementById("controlPanel").classList.toggle("active");
+      document.getElementById("panelOverlay").classList.toggle("active");
+    }
+
+    function saveToken() {
+      const token = document.getElementById("ghToken").value.trim();
+      if (!token) {
+        alert("Masukkan token yang valid!");
+        return;
+      }
+      localStorage.setItem("gh_pat_token", token);
+      log("Token GitHub disimpan secara manual.", "success");
+    }
+
+    function getToken() {
+      return localStorage.getItem("gh_pat_token") || document.getElementById("ghToken").value.trim();
+    }
+
+    // --- AKSES WEBCAM & PORTRAIT CROP ---
+    async function initWebcam() {
+      try {
+        webcamStream = await navigator.mediaDevices.getUserMedia({
+          video: { width: { ideal: 1920 }, height: { ideal: 1080 } },
+          audio: false
+        });
+        video.srcObject = webcamStream;
+        log("Webcam berhasil diakses.", "success");
+      } catch (err) {
+        log("Gagal mengakses webcam: " + err.message, "error");
+      }
+    }
+
+    function capturePortraitBase64() {
+      const vWidth = video.videoWidth;
+      const vHeight = video.videoHeight;
+
+      if (!vWidth || !vHeight) {
+        throw new Error("Frame webcam belum siap.");
+      }
+
+      const targetRatio = 9 / 16;
+      let sWidth, sHeight, sx, sy;
+
+      if (vWidth / vHeight > targetRatio) {
+        sHeight = vHeight;
+        sWidth = vHeight * targetRatio;
+        sx = (vWidth - sWidth) / 2;
+        sy = 0;
+      } else {
+        sWidth = vWidth;
+        sHeight = vWidth / targetRatio;
+        sx = 0;
+        sy = (vHeight - sHeight) / 2;
+      }
+
+      canvas.width = 720;
+      canvas.height = 1280;
+      const ctx = canvas.getContext("2d");
+      ctx.drawImage(video, sx, sy, sWidth, sHeight, 0, 0, canvas.width, canvas.height);
+      
+      const dataUrl = canvas.toDataURL("image/jpeg", 0.85);
+      return dataUrl.split(",")[1];
+    }
+
+    // --- GITHUB REST API & ROTASI FILE (MAX 4 FOTO) ---
+    async function fetchFileInfo(filename, token) {
+      const res = await fetch(`https://api.github.com/repos/${REPO_OWNER}/${REPO_NAME}/contents/${PHOTOS_PATH}/${filename}`, {
+        headers: {
+          "Authorization": `Bearer ${token}`,
+          "Accept": "application/vnd.github+json"
+        }
+      });
+      if (res.status === 200) {
+        return await res.json();
+      }
+      return null;
+    }
+
+    async function uploadFileToGitHub(filename, base64Content, token, sha = null) {
+      const url = `https://api.github.com/repos/${REPO_OWNER}/${REPO_NAME}/contents/${PHOTOS_PATH}/${filename}`;
+      const payload = {
+        message: `Auto-update ${filename} [skip ci]`,
+        content: base64Content
+      };
+      if (sha) payload.sha = sha;
+
+      const res = await fetch(url, {
+        method: "PUT",
+        headers: {
+          "Authorization": `Bearer ${token}`,
+          "Content-Type": "application/json",
+          "Accept": "application/vnd.github+json"
+        },
+        body: JSON.stringify(payload)
+      });
+
+      if (!res.ok) {
+        const err = await res.json();
+        throw new Error(err.message || "Gagal upload ke GitHub");
+      }
       return await res.json();
     }
-    return null;
-  }
 
-  async function uploadFileViaProxy(filename, base64Content) {
-    log(`Mengirim ${filename} ke Backend Proxy...`, "info");
-    
-    const res = await fetch(PROXY_WORKER_URL, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ 
-        filename: filename, 
-        imageBase64: base64Content 
-      })
-    });
-
-    if (!res.ok) {
-      const errData = await res.json().catch(() => ({}));
-      throw new Error(errData.error || `Gagal upload ${filename} via proxy`);
-    }
-    return await res.json();
-  }
-
-  async function captureAndUploadProcess() {
-    const token = getToken();
-    if (!token) {
-      log("Token GitHub belum diisi!", "error");
-      togglePanel();
-      return;
-    }
-
-    try {
-      log("Mengambil gambar webcam (Portrait 9:16)...", "info");
-      const newPhotoBase64 = capturePortraitBase64();
-
-      log("Membaca status file lama di GitHub...", "info");
-      const files = [];
-      for (let i = 1; i <= MAX_PHOTOS; i++) {
-        const info = await fetchFileInfo(`photo_${i}.jpg`, token);
-        files.push(info);
+    async function captureAndUploadProcess() {
+      const token = getToken();
+      if (!token) {
+        log("Token GitHub tidak ditemukan! Atur di Cloudflare Variables atau masukkan manual.", "error");
+        togglePanel();
+        return;
       }
 
-      // Rotasi File: photo_3 -> photo_4, photo_2 -> photo_3, photo_1 -> photo_2
-      for (let i = MAX_PHOTOS - 1; i >= 1; i--) {
-        const currentFile = files[i - 1];
-        if (currentFile && currentFile.content) {
-          const targetFilename = `photo_${i + 1}.jpg`;
-          log(`Menggeser photo_${i}.jpg -> ${targetFilename}...`, "info");
-          
-          const cleanContent = currentFile.content.replace(/\n/g, "");
-          await uploadFileViaProxy(targetFilename, cleanContent);
+      try {
+        log("Mengambil frame portrait 9:16...", "info");
+        const newPhotoBase64 = capturePortraitBase64();
+
+        log("Mengecek file existing di GitHub...", "info");
+        const files = [];
+        for (let i = 1; i <= MAX_PHOTOS; i++) {
+          const info = await fetchFileInfo(`photo_${i}.jpg`, token);
+          files.push(info);
         }
+
+        // Geser foto lama (photo_3 -> photo_4, photo_2 -> photo_3, photo_1 -> photo_2)
+        for (let i = MAX_PHOTOS - 1; i >= 1; i--) {
+          const currentFile = files[i - 1];
+          if (currentFile && currentFile.content) {
+            const targetFilename = `photo_${i + 1}.jpg`;
+            const targetSha = files[i] ? files[i].sha : null;
+            log(`Menggeser photo_${i}.jpg -> ${targetFilename}...`, "info");
+            
+            const cleanContent = currentFile.content.replace(/\n/g, "");
+            await uploadFileToGitHub(targetFilename, cleanContent, token, targetSha);
+          }
+        }
+
+        // Upload foto baru ke slot photo_1.jpg
+        log("Mengunggah foto baru ke photo_1.jpg...", "info");
+        const shaPhoto1 = files[0] ? files[0].sha : null;
+        await uploadFileToGitHub("photo_1.jpg", newPhotoBase64, token, shaPhoto1);
+
+        log("Berhasil! 4 Foto berhasil dirotasi.", "success");
+        setTimeout(refreshGallery, 1500);
+      } catch (err) {
+        log("Error: " + err.message, "error");
       }
-
-      // Upload Foto Baru ke photo_1.jpg
-      log("Mengunggah foto baru ke photo_1.jpg...", "info");
-      await uploadFileViaProxy("photo_1.jpg", newPhotoBase64);
-
-      log("Upload berhasil! 4 foto terotasi rapi.", "success");
-      setTimeout(refreshGallery, 1500);
-    } catch (err) {
-      log("Error: " + err.message, "error");
     }
-  }
 
-  function manualCaptureTrigger() {
-    log("Pemicu instan diaktifkan (Alt+C / Tombol)", "info");
-    captureAndUploadProcess();
-  }
-
-  function toggleAutoCapture() {
-    const btn = document.getElementById("btnToggleTimer");
-    if (autoCaptureTimer) {
-      clearInterval(autoCaptureTimer);
-      autoCaptureTimer = null;
-      btn.textContent = "▶ Mulai Auto-Capture (30 Menit)";
-      btn.className = "btn btn-primary";
-      log("Auto-capture dihentikan.", "info");
-    } else {
-      autoCaptureTimer = setInterval(captureAndUploadProcess, AUTO_CAPTURE_INTERVAL);
-      btn.textContent = "⏹ Hentikan Auto-Capture";
-      btn.className = "btn btn-danger";
-      log("Auto-capture berjalan (interval 30 menit).", "success");
+    function manualCaptureTrigger() {
+      log("Pemicu instan diaktifkan (Alt+C / Tombol)", "info");
       captureAndUploadProcess();
     }
-  }
 
-  function refreshGallery() {
-    const timestamp = Date.now();
-    for (let i = 1; i <= MAX_PHOTOS; i++) {
-      const card = document.getElementById(`card-${i}`);
-      const img = card.querySelector("img");
-      const imgUrl = `photos/photo_${i}.jpg?t=${timestamp}`;
-      img.src = imgUrl;
-      
-      const timeLabel = card.querySelector(".timestamp");
-      timeLabel.textContent = `Sync: ${new Date().toLocaleTimeString()}`;
+    function toggleAutoCapture() {
+      const btn = document.getElementById("btnToggleTimer");
+      if (autoCaptureTimer) {
+        clearInterval(autoCaptureTimer);
+        autoCaptureTimer = null;
+        btn.textContent = "▶ Mulai Auto-Capture (30 Menit)";
+        btn.className = "btn btn-primary";
+        log("Auto-capture dihentikan.", "info");
+      } else {
+        autoCaptureTimer = setInterval(captureAndUploadProcess, AUTO_CAPTURE_INTERVAL);
+        btn.textContent = "⏹ Hentikan Auto-Capture";
+        btn.className = "btn btn-danger";
+        log("Auto-capture aktif (interval 30 menit).", "success");
+        captureAndUploadProcess();
+      }
     }
-  }
 
-  function handleImgError(img) {
-    img.src = "data:image/svg+xml;charset=UTF-8,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20width%3D%22720%22%20height%3D%221280%22%20viewBox%3D%220%200%20720%201280%22%3E%3Crect%20fill%3D%22%231e293b%22%20width%3D%22720%22%20height%3D%221280%22%2F%3E%3Ctext%20fill%3D%22%2364748b%22%20font-family%3D%22sans-serif%22%20font-size%3D%2228%22%20dy%3D%2210.5%22%20font-weight%3D%22bold%22%20x%3D%2250%25%22%20y%3D%2250%25%22%20text-anchor%3D%22middle%22%3EBelum%20Ada%20Foto%3C%2Ftext%3E%3C%2Fsvg%3E";
-  }
-</script>
+    // --- TAMPILAN & AUTO REFRESH GALERI (Direct API Base64) ---
+    async function refreshGallery() {
+      const token = getToken();
+      const headers = { "Accept": "application/vnd.github+json" };
+      if (token) {
+        headers["Authorization"] = `Bearer ${token}`;
+      }
+
+      for (let i = 1; i <= MAX_PHOTOS; i++) {
+        const card = document.getElementById(`card-${i}`);
+        const img = card.querySelector("img");
+        const timeLabel = card.querySelector(".timestamp");
+
+        try {
+          const res = await fetch(`https://api.github.com/repos/${REPO_OWNER}/${REPO_NAME}/contents/${PHOTOS_PATH}/photo_${i}.jpg?t=${Date.now()}`, {
+            headers: headers
+          });
+
+          if (res.ok) {
+            const fileData = await res.json();
+            if (fileData.content) {
+              const cleanBase64 = fileData.content.replace(/\n/g, "");
+              img.src = `data:image/jpeg;base64,${cleanBase64}`;
+              timeLabel.textContent = `Aktif: ${new Date().toLocaleTimeString()}`;
+            }
+          } else {
+            handleImgError(img);
+            timeLabel.textContent = "Kosong";
+          }
+        } catch (err) {
+          handleImgError(img);
+        }
+      }
+    }
+
+    function handleImgError(img) {
+      img.src = "data:image/svg+xml;charset=UTF-8,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20width%3D%22720%22%20height%3D%221280%22%20viewBox%3D%220%200%20720%201280%22%3E%3Crect%20fill%3D%22%231e293b%22%20width%3D%22720%22%20height%3D%221280%22%2F%3E%3Ctext%20fill%3D%22%2364748b%22%20font-family%3D%22sans-serif%22%20font-size%3D%2228%22%20dy%3D%2210.5%22%20font-weight%3D%22bold%22%20x%3D%2250%25%22%20y%3D%2250%25%22%20text-anchor%3D%22middle%22%3EBelum%20Ada%20Foto%3C%2Ftext%3E%3C%2Fsvg%3E";
+    }
+  </script>
 </body>
 </html>
