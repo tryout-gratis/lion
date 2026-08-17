@@ -1,0 +1,617 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>SeeLion Live - Automated Portrait Gallery</title>
+  <style>
+    :root {
+      --bg-dark: #0f172a;
+      --card-bg: #1e293b;
+      --accent: #38bdf8;
+      --accent-hover: #0ea5e9;
+      --text: #f8fafc;
+      --text-muted: #94a3b8;
+      --danger: #ef4444;
+      --success: #22c55e;
+      --border: #334155;
+    }
+
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+    }
+
+    body {
+      background-color: var(--bg-dark);
+      color: var(--text);
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+    }
+
+    header {
+      padding: 1.25rem 2rem;
+      background-color: rgba(30, 41, 59, 0.7);
+      backdrop-filter: blur(10px);
+      border-bottom: 1px solid var(--border);
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      position: sticky;
+      top: 0;
+      z-index: 50;
+    }
+
+    .brand {
+      display: flex;
+      align-items: center;
+      gap: 0.75rem;
+      font-size: 1.25rem;
+      font-weight: 700;
+      color: var(--text);
+    }
+
+    .brand span {
+      color: var(--accent);
+    }
+
+    .header-actions {
+      display: flex;
+      align-items: center;
+      gap: 1rem;
+    }
+
+    .btn {
+      padding: 0.5rem 1rem;
+      border-radius: 0.5rem;
+      font-weight: 600;
+      font-size: 0.875rem;
+      cursor: pointer;
+      border: 1px solid transparent;
+      transition: all 0.2s ease;
+      display: inline-flex;
+      align-items: center;
+      gap: 0.5rem;
+    }
+
+    .btn-primary {
+      background-color: var(--accent);
+      color: var(--bg-dark);
+    }
+
+    .btn-primary:hover {
+      background-color: var(--accent-hover);
+    }
+
+    .btn-secondary {
+      background-color: var(--card-bg);
+      border-color: var(--border);
+      color: var(--text);
+    }
+
+    .btn-secondary:hover {
+      background-color: var(--border);
+    }
+
+    .btn-danger {
+      background-color: var(--danger);
+      color: white;
+    }
+
+    main {
+      flex: 1;
+      padding: 2rem;
+      max-width: 1400px;
+      margin: 0 auto;
+      width: 100%;
+    }
+
+    /* Gallery Grid */
+    .gallery-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 1.5rem;
+    }
+
+    .gallery-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+      gap: 1.5rem;
+    }
+
+    .photo-card {
+      background-color: var(--card-bg);
+      border: 1px solid var(--border);
+      border-radius: 1rem;
+      overflow: hidden;
+      display: flex;
+      flex-direction: column;
+      box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.3);
+      position: relative;
+    }
+
+    /* 9:16 Portrait Aspect Ratio Container */
+    .photo-wrapper {
+      position: relative;
+      width: 100%;
+      padding-top: 177.77%; /* 16:9 inverted = 9:16 aspect ratio */
+      background-color: #0b0f19;
+      overflow: hidden;
+    }
+
+    .photo-wrapper img {
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+      transition: transform 0.3s ease;
+    }
+
+    .photo-card:hover .photo-wrapper img {
+      transform: scale(1.03);
+    }
+
+    .photo-meta {
+      padding: 0.85rem 1rem;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      background: var(--card-bg);
+      font-size: 0.8rem;
+      color: var(--text-muted);
+    }
+
+    .badge {
+      background: rgba(56, 189, 248, 0.1);
+      color: var(--accent);
+      padding: 0.25rem 0.5rem;
+      border-radius: 0.25rem;
+      font-size: 0.75rem;
+      font-weight: 600;
+    }
+
+    /* Control Panel Drawer / Modal */
+    .panel-overlay {
+      position: fixed;
+      inset: 0;
+      background: rgba(0, 0, 0, 0.6);
+      backdrop-filter: blur(4px);
+      z-index: 99;
+      opacity: 0;
+      pointer-events: none;
+      transition: opacity 0.3s ease;
+    }
+
+    .panel-overlay.active {
+      opacity: 1;
+      pointer-events: auto;
+    }
+
+    .panel {
+      position: fixed;
+      right: -420px;
+      top: 0;
+      width: 400px;
+      max-width: 90vw;
+      height: 100vh;
+      background-color: var(--card-bg);
+      border-left: 1px solid var(--border);
+      z-index: 100;
+      padding: 2rem;
+      box-shadow: -10px 0 25px rgba(0, 0, 0, 0.5);
+      transition: right 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+      overflow-y: auto;
+      display: flex;
+      flex-direction: column;
+      gap: 1.5rem;
+    }
+
+    .panel.active {
+      right: 0;
+    }
+
+    .panel-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      border-bottom: 1px solid var(--border);
+      padding-bottom: 1rem;
+    }
+
+    .form-group {
+      display: flex;
+      flex-direction: column;
+      gap: 0.5rem;
+    }
+
+    label {
+      font-size: 0.875rem;
+      font-weight: 600;
+      color: var(--text-muted);
+    }
+
+    input[type="password"], input[type="text"] {
+      background-color: var(--bg-dark);
+      border: 1px solid var(--border);
+      border-radius: 0.5rem;
+      padding: 0.6rem 0.75rem;
+      color: var(--text);
+      outline: none;
+    }
+
+    input:focus {
+      border-color: var(--accent);
+    }
+
+    .video-preview-wrapper {
+      position: relative;
+      width: 100%;
+      border-radius: 0.5rem;
+      overflow: hidden;
+      background: #000;
+      border: 1px solid var(--border);
+      padding-top: 133.33%; /* 3:4 preview */
+    }
+
+    #webcamVideo {
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+    }
+
+    #cropCanvas {
+      display: none;
+    }
+
+    .status-box {
+      font-size: 0.8rem;
+      padding: 0.75rem;
+      border-radius: 0.5rem;
+      background-color: var(--bg-dark);
+      border: 1px solid var(--border);
+      min-height: 50px;
+      max-height: 120px;
+      overflow-y: auto;
+      font-family: monospace;
+      color: var(--text-muted);
+    }
+
+    .status-box .log-success { color: var(--success); }
+    .status-box .log-error { color: var(--danger); }
+    .status-box .log-info { color: var(--accent); }
+  </style>
+</head>
+<body>
+
+  <!-- Header -->
+  <header>
+    <div class="brand">
+      <span>🦁</span> SeeLion Live Cam
+    </div>
+    <div class="header-actions">
+      <button class="btn btn-secondary" onclick="togglePanel()">⚙️ Panel Kontrol</button>
+      <button class="btn btn-primary" onclick="manualCaptureTrigger()">📸 Ambil Foto (Alt+C)</button>
+    </div>
+  </header>
+
+  <!-- Gallery Main Content -->
+  <main>
+    <div class="gallery-header">
+      <div>
+        <h2>4 Foto Terkini</h2>
+        <p style="color: var(--text-muted); font-size: 0.875rem;">Otomatis diperbarui dari Cloudflare / GitHub CDN</p>
+      </div>
+      <button class="btn btn-secondary" onclick="refreshGallery()">🔄 Refresh Galeri</button>
+    </div>
+
+    <div class="gallery-grid" id="galleryContainer">
+      <!-- 4 Portrait Photo Cards -->
+      <div class="photo-card" id="card-1">
+        <div class="photo-wrapper"><img src="" alt="Photo 1" onerror="handleImgError(this)" /></div>
+        <div class="photo-meta"><span class="badge">Terbaru #1</span><span class="timestamp">-</span></div>
+      </div>
+      <div class="photo-card" id="card-2">
+        <div class="photo-wrapper"><img src="" alt="Photo 2" onerror="handleImgError(this)" /></div>
+        <div class="photo-meta"><span class="badge">Foto #2</span><span class="timestamp">-</span></div>
+      </div>
+      <div class="photo-card" id="card-3">
+        <div class="photo-wrapper"><img src="" alt="Photo 3" onerror="handleImgError(this)" /></div>
+        <div class="photo-meta"><span class="badge">Foto #3</span><span class="timestamp">-</span></div>
+      </div>
+      <div class="photo-card" id="card-4">
+        <div class="photo-wrapper"><img src="" alt="Photo 4" onerror="handleImgError(this)" /></div>
+        <div class="photo-meta"><span class="badge">Foto #4</span><span class="timestamp">-</span></div>
+      </div>
+    </div>
+  </main>
+
+  <!-- Side Control Panel -->
+  <div class="panel-overlay" id="panelOverlay" onclick="togglePanel()"></div>
+  <div class="panel" id="controlPanel">
+    <div class="panel-header">
+      <h3>Panel Pengaturan</h3>
+      <button class="btn btn-secondary" style="padding: 0.25rem 0.5rem;" onclick="togglePanel()">✕</button>
+    </div>
+
+    <!-- GitHub Token Input -->
+    <div class="form-group">
+      <label for="ghToken">GitHub Personal Access Token (PAT):</label>
+      <input type="password" id="ghToken" placeholder="ghp_xxxxxxxxxxxx" />
+      <button class="btn btn-secondary" style="margin-top: 0.25rem;" onclick="saveToken()">Simpan Token</button>
+    </div>
+
+    <!-- Live Webcam Preview -->
+    <div class="form-group">
+      <label>Preview Webcam (Crop 9:16 Portrait):</label>
+      <div class="video-preview-wrapper">
+        <video id="webcamVideo" autoplay playsinline muted></video>
+      </div>
+    </div>
+
+    <!-- Capture Automation Controls -->
+    <div class="form-group" style="gap: 0.75rem;">
+      <button class="btn btn-primary" id="btnToggleTimer" onclick="toggleAutoCapture()">▶ Mulai Auto-Capture (30 Menit)</button>
+      <button class="btn btn-secondary" onclick="captureAndUploadProcess()">📸 Ambil & Upload Sekarang</button>
+    </div>
+
+    <!-- Logs / Status -->
+    <div class="form-group">
+      <label>Status & Log Eksekusi:</label>
+      <div class="status-box" id="logBox">Menunggu aksi...</div>
+    </div>
+  </div>
+
+  <canvas id="cropCanvas"></canvas>
+
+  <script>
+    // --- KONFIGURASI REPO ---
+    const REPO_OWNER = "tryout-gratis";
+    const REPO_NAME = "lion";
+    const PHOTOS_PATH = "photos"; // Directory foto di repository
+    const MAX_PHOTOS = 4;
+    const AUTO_CAPTURE_INTERVAL = 30 * 60 * 1000; // 30 Menit
+
+    let autoCaptureTimer = null;
+    let webcamStream = null;
+    const video = document.getElementById("webcamVideo");
+    const canvas = document.getElementById("cropCanvas");
+
+    // --- INISIALISASI ---
+    window.addEventListener("DOMContentLoaded", () => {
+      const savedToken = localStorage.getItem("gh_pat_token");
+      if (savedToken) {
+        document.getElementById("ghToken").value = savedToken;
+      }
+      initWebcam();
+      refreshGallery();
+      // Auto-refresh tampilan galeri setiap 30 detik untuk sinkronisasi pengunjung
+      setInterval(refreshGallery, 30000);
+    });
+
+    // Global Key Listener: Alt + C
+    window.addEventListener("keydown", (e) => {
+      if (e.altKey && (e.key === "c" || e.key === "C")) {
+        e.preventDefault();
+        manualCaptureTrigger();
+      }
+    });
+
+    function log(msg, type = "info") {
+      const logBox = document.getElementById("logBox");
+      const time = new Date().toLocaleTimeString();
+      const div = document.createElement("div");
+      div.className = `log-${type}`;
+      div.innerText = `[${time}] ${msg}`;
+      logBox.prepend(div);
+    }
+
+    function togglePanel() {
+      document.getElementById("controlPanel").classList.toggle("active");
+      document.getElementById("panelOverlay").classList.toggle("active");
+    }
+
+    function saveToken() {
+      const token = document.getElementById("ghToken").value.trim();
+      if (!token) {
+        alert("Masukkan token yang valid!");
+        return;
+      }
+      localStorage.setItem("gh_pat_token", token);
+      log("Token GitHub berhasil disimpan ke LocalStorage.", "success");
+    }
+
+    function getToken() {
+      return localStorage.getItem("gh_pat_token") || document.getElementById("ghToken").value.trim();
+    }
+
+    // --- AKSES WEBCAM & PORTRAIT CROP ---
+    async function initWebcam() {
+      try {
+        webcamStream = await navigator.mediaDevices.getUserMedia({
+          video: { width: { ideal: 1920 }, height: { ideal: 1080 } },
+          audio: false
+        });
+        video.srcObject = webcamStream;
+        log("Webcam berhasil diakses.", "success");
+      } catch (err) {
+        log("Gagal mengakses webcam: " + err.message, "error");
+      }
+    }
+
+    // Mengambil frame dan memotong secara Center Crop ke Aspek Rasio Portrait 9:16
+    function capturePortraitBase64() {
+      const vWidth = video.videoWidth;
+      const vHeight = video.videoHeight;
+
+      if (!vWidth || !vHeight) {
+        throw new Error("Frame webcam belum siap.");
+      }
+
+      const targetRatio = 9 / 16;
+      let sWidth, sHeight, sx, sy;
+
+      if (vWidth / vHeight > targetRatio) {
+        sHeight = vHeight;
+        sWidth = vHeight * targetRatio;
+        sx = (vWidth - sWidth) / 2;
+        sy = 0;
+      } else {
+        sWidth = vWidth;
+        sHeight = vWidth / targetRatio;
+        sx = 0;
+        sy = (vHeight - sHeight) / 2;
+      }
+
+      canvas.width = 720;
+      canvas.height = 1280;
+      const ctx = canvas.getContext("2d");
+      
+      // Draw & crop center
+      ctx.drawImage(video, sx, sy, sWidth, sHeight, 0, 0, canvas.width, canvas.height);
+      
+      // Output as Base64 JPEG (kualitas 0.85)
+      const dataUrl = canvas.toDataURL("image/jpeg", 0.85);
+      return dataUrl.split(",")[1]; // Hapus prefix data:image/jpeg;base64,
+    }
+
+    // --- GITHUB REST API & ROTASI FILE (MAX 4 FOTO) ---
+    async function fetchFileInfo(filename, token) {
+      const res = await fetch(`https://api.github.com/repos/${REPO_OWNER}/${REPO_NAME}/contents/${PHOTOS_PATH}/${filename}`, {
+        headers: {
+          "Authorization": `Bearer ${token}`,
+          "Accept": "application/vnd.github+json"
+        }
+      });
+      if (res.status === 200) {
+        return await res.json();
+      }
+      return null;
+    }
+
+    async function uploadFileToGitHub(filename, base64Content, token, sha = null) {
+      const url = `https://api.github.com/repos/${REPO_OWNER}/${REPO_NAME}/contents/${PHOTOS_PATH}/${filename}`;
+      const payload = {
+        message: `Auto-update ${filename} [skip ci]`,
+        content: base64Content
+      };
+      if (sha) payload.sha = sha;
+
+      const res = await fetch(url, {
+        method: "PUT",
+        headers: {
+          "Authorization": `Bearer ${token}`,
+          "Content-Type": "application/json",
+          "Accept": "application/vnd.github+json"
+        },
+        body: JSON.stringify(payload)
+      });
+
+      if (!res.ok) {
+        const err = await res.json();
+        throw new Error(err.message || "Gagal upload ke GitHub");
+      }
+      return await res.json();
+    }
+
+    async function captureAndUploadProcess() {
+      const token = getToken();
+      if (!token) {
+        log("Token GitHub belum diisi!", "error");
+        togglePanel();
+        return;
+      }
+
+      try {
+        log("Mengambil gambar webcam (Portrait 9:16)...", "info");
+        const newPhotoBase64 = capturePortraitBase64();
+
+        log("Membaca status file lama di GitHub...", "info");
+        // Ambil info sha dan konten photo_1, photo_2, photo_3, photo_4 jika ada
+        const files = [];
+        for (let i = 1; i <= MAX_PHOTOS; i++) {
+          const info = await fetchFileInfo(`photo_${i}.jpg`, token);
+          files.push(info);
+        }
+
+        // Rotasi: Geser photo_3 ke photo_4, photo_2 ke photo_3, photo_1 ke photo_2
+        for (let i = MAX_PHOTOS - 1; i >= 1; i--) {
+          const currentFile = files[i - 1]; // indeks array i-1 = photo_i
+          if (currentFile && currentFile.content) {
+            const targetFilename = `photo_${i + 1}.jpg`;
+            const targetSha = files[i] ? files[i].sha : null;
+            log(`Menggeser photo_${i}.jpg -> ${targetFilename}...`, "info");
+            
+            // Konten dari GitHub API bisa memuat line-break (\n), bersihkan terlebih dahulu
+            const cleanContent = currentFile.content.replace(/\n/g, "");
+            await uploadFileToGitHub(targetFilename, cleanContent, token, targetSha);
+          }
+        }
+
+        // Upload foto baru ke photo_1.jpg
+        log("Mengunggah foto baru ke photo_1.jpg...", "info");
+        const shaPhoto1 = files[0] ? files[0].sha : null;
+        await uploadFileToGitHub("photo_1.jpg", newPhotoBase64, token, shaPhoto1);
+
+        log("Upload berhasil! 4 foto terotasi rapi.", "success");
+        setTimeout(refreshGallery, 1500);
+      } catch (err) {
+        log("Error: " + err.message, "error");
+      }
+    }
+
+    function manualCaptureTrigger() {
+      log("Pemicu instan diaktifkan (Alt+C / Tombol)", "info");
+      captureAndUploadProcess();
+    }
+
+    function toggleAutoCapture() {
+      const btn = document.getElementById("btnToggleTimer");
+      if (autoCaptureTimer) {
+        clearInterval(autoCaptureTimer);
+        autoCaptureTimer = null;
+        btn.textContent = "▶ Mulai Auto-Capture (30 Menit)";
+        btn.className = "btn btn-primary";
+        log("Auto-capture dihentikan.", "info");
+      } else {
+        autoCaptureTimer = setInterval(captureAndUploadProcess, AUTO_CAPTURE_INTERVAL);
+        btn.textContent = "⏹ Hentikan Auto-Capture";
+        btn.className = "btn btn-danger";
+        log("Auto-capture berjalan (interval 30 menit).", "success");
+        // Eksekusi foto pertama saat dimulai
+        captureAndUploadProcess();
+      }
+    }
+
+    // --- TAMPILAN & AUTO REFRESH GALERI ---
+    function refreshGallery() {
+      const timestamp = Date.now();
+      for (let i = 1; i <= MAX_PHOTOS; i++) {
+        const card = document.getElementById(`card-${i}`);
+        const img = card.querySelector("img");
+        
+        // Sumber gambar dari repository (mendukung akses lokal & Cloudflare Pages)
+        // Gunakan cache-buster ?t=timestamp agar gambar selalu fresh
+        const imgUrl = `photos/photo_${i}.jpg?t=${timestamp}`;
+        img.src = imgUrl;
+        
+        const timeLabel = card.querySelector(".timestamp");
+        timeLabel.textContent = `Sync: ${new Date().toLocaleTimeString()}`;
+      }
+    }
+
+    function handleImgError(img) {
+      // Placeholder SVG jika foto belum ada di repo
+      img.src = "data:image/svg+xml;charset=UTF-8,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20width%3D%22720%22%20height%3D%221280%22%20viewBox%3D%220%200%20720%201280%22%3E%3Crect%20fill%3D%22%231e293b%22%20width%3D%22720%22%20height%3D%221280%22%2F%3E%3Ctext%20fill%3D%22%2364748b%22%20font-family%3D%22sans-serif%22%20font-size%3D%2228%22%20dy%3D%2210.5%22%20font-weight%3D%22bold%22%20x%3D%2250%25%22%20y%3D%2250%25%22%20text-anchor%3D%22middle%22%3EBelum%20Ada%20Foto%3C%2Ftext%3E%3C%2Fsvg%3E";
+    }
+  </script>
+</body>
+</html>
