@@ -497,30 +497,18 @@
       return null;
     }
 
-    async function uploadFileToGitHub(filename, base64Content, token, sha = null) {
-      const url = `https://api.github.com/repos/${REPO_OWNER}/${REPO_NAME}/contents/${PHOTOS_PATH}/${filename}`;
-      const payload = {
-        message: `Auto-update ${filename} [skip ci]`,
-        content: base64Content
-      };
-      if (sha) payload.sha = sha;
+    async function uploadFileViaProxy(base64Content) {
+  log("Mengirim foto ke Backend Proxy...", "info");
+  
+  const res = await fetch("HTTPS_URL_WORKER_ANDA", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ imageBase64: base64Content })
+  });
 
-      const res = await fetch(url, {
-        method: "PUT",
-        headers: {
-          "Authorization": `Bearer ${token}`,
-          "Content-Type": "application/json",
-          "Accept": "application/vnd.github+json"
-        },
-        body: JSON.stringify(payload)
-      });
-
-      if (!res.ok) {
-        const err = await res.json();
-        throw new Error(err.message || "Gagal upload ke GitHub");
-      }
-      return await res.json();
-    }
+  if (!res.ok) throw new Error("Gagal upload via proxy");
+  return await res.json();
+}
 
     async function captureAndUploadProcess() {
       const token = getToken();
