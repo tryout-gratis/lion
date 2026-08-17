@@ -310,7 +310,7 @@
         <h2>4 Foto Terkini</h2>
         <p style="color: var(--text-muted); font-size: 0.875rem;">Otomatis diperbarui dari Cloudflare / GitHub CDN</p>
       </div>
-      <button class="btn btn-secondary" onclick="refreshGallery()">🔄 Refresh Galeri</button>
+      <button class="btn btn-secondary" onclick="Gallery()">🔄  Galeri</button>
     </div>
 
     <div class="gallery-grid" id="galleryContainer">
@@ -392,9 +392,9 @@
         document.getElementById("ghToken").value = savedToken;
       }
       initWebcam();
-      refreshGallery();
-      // Auto-refresh tampilan galeri setiap 30 detik untuk sinkronisasi pengunjung
-      setInterval(refreshGallery, 30000);
+      Gallery();
+      // Auto- tampilan galeri setiap 30 detik untuk sinkronisasi pengunjung
+      setInterval(Gallery, 30000);
     });
 
     // Global Key Listener: Alt + C
@@ -562,7 +562,7 @@
         await uploadFileToGitHub("photo_1.jpg", newPhotoBase64, token, shaPhoto1);
 
         log("Upload berhasil! 4 foto terotasi rapi.", "success");
-        setTimeout(refreshGallery, 1500);
+        setTimeout(Gallery, 1500);
       } catch (err) {
         log("Error: " + err.message, "error");
       }
@@ -592,21 +592,21 @@
     }
 
     // --- TAMPILAN & AUTO REFRESH GALERI ---
-    function refreshGallery() {
-      const timestamp = Date.now();
-      for (let i = 1; i <= MAX_PHOTOS; i++) {
-        const card = document.getElementById(`card-${i}`);
-        const img = card.querySelector("img");
-        
-        // Sumber gambar dari repository (mendukung akses lokal & Cloudflare Pages)
-        // Gunakan cache-buster ?t=timestamp agar gambar selalu fresh
-        const imgUrl = `photos/photo_${i}.jpg?t=${timestamp}`;
-        img.src = imgUrl;
-        
-        const timeLabel = card.querySelector(".timestamp");
-        timeLabel.textContent = `Sync: ${new Date().toLocaleTimeString()}`;
-      }
-    }
+    // --- TAMPILAN & AUTO REFRESH GALERI ---
+function refreshGallery() {
+  const timestamp = Date.now();
+  for (let i = 1; i <= MAX_PHOTOS; i++) {
+    const card = document.getElementById(`card-${i}`);
+    const img = card.querySelector("img");
+    
+    // Ambil langsung dari GitHub Raw Content agar Cloudflare Pages tidak perlu re-deploy
+    const imgUrl = `https://raw.githubusercontent.com/${REPO_OWNER}/${REPO_NAME}/main/${PHOTOS_PATH}/photo_${i}.jpg?t=${timestamp}`;
+    img.src = imgUrl;
+    
+    const timeLabel = card.querySelector(".timestamp");
+    timeLabel.textContent = `Sync: ${new Date().toLocaleTimeString()}`;
+  }
+}
 
     function handleImgError(img) {
       // Placeholder SVG jika foto belum ada di repo
