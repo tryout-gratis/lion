@@ -298,8 +298,8 @@
       <span>🦁</span> SeeLion Live Cam
     </div>
     <div class="header-actions">
-      <button class="btn btn-secondary" onclick="togglePanel()">⚙️ Panel Kontrol</button>
-      <button class="btn btn-primary" onclick="manualCaptureTrigger()">📸 Ambil Foto (Alt+C)</button>
+      <button class="btn btn-secondary" onclick="togglePanel()">⚙️</button>
+      <button class="btn btn-primary" onclick="manualCaptureTrigger()">📸 (Alt+C)</button>
     </div>
   </header>
 
@@ -308,9 +308,9 @@
     <div class="gallery-header">
       <div>
         <h2>4 Foto Terkini</h2>
-        <p style="color: var(--text-muted); font-size: 0.875rem;">Otomatis diperbarui dari Cloudflare / GitHub CDN</p>
+        <p style="color: var(--text-muted); font-size: 0.875rem;">Otomatis</p>
       </div>
-      <button class="btn btn-secondary" onclick="refreshGallery()">🔄 Refresh Galeri</button>
+      <button class="btn btn-secondary" onclick="refreshGallery()">🔄</button>
     </div>
 
     <div class="gallery-grid" id="galleryContainer">
@@ -338,16 +338,16 @@
   <div class="panel-overlay" id="panelOverlay" onclick="togglePanel()"></div>
   <div class="panel" id="controlPanel">
     <div class="panel-header">
-      <h3>Panel Pengaturan</h3>
+      <!-- h3>Panel Pengaturan</h3 -->
       <button class="btn btn-secondary" style="padding: 0.25rem 0.5rem;" onclick="togglePanel()">✕</button>
     </div>
 
     <!-- GitHub Token Input -->
-    <div class="form-group">
+    <!-- div class="form-group">
       <label for="ghToken">GitHub Personal Access Token (PAT):</label>
       <input type="password" id="ghToken" placeholder="ghp_xxxxxxxxxxxx" />
       <button class="btn btn-secondary" style="margin-top: 0.25rem;" onclick="saveToken()">Simpan Token</button>
-    </div>
+  </div -->
 
     <!-- Live Webcam Preview -->
     <div class="form-group">
