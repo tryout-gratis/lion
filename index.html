@@ -547,7 +547,9 @@
         // Upload foto baru ke photo_1.jpg
         log("Mengunggah foto baru ke photo_1.jpg...", "info");
         const shaPhoto1 = files[0] ? files[0].sha : null;
-        await uploadFileToGitHub("photo_1.jpg", newPhotoBase64, token, shaPhoto1);
+        //await uploadFileToGitHub("photo_1.jpg", newPhotoBase64, token, shaPhoto1);
+        // Mengganti nama pemanggilan dari uploadFileToGitHub ke uploadFileViaProxy
+         await uploadFileViaProxy(cleanContent);
 
         log("Upload berhasil! 4 foto terotasi rapi.", "success");
         setTimeout(refreshGallery, 1500);
