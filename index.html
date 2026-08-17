@@ -359,7 +359,7 @@
 
     <!-- Capture Automation Controls -->
     <div class="form-group" style="gap: 0.75rem;">
-      <button class="btn btn-primary" id="btnToggleTimer" onclick="toggleAutoCapture()">▶ Mulai Auto-Capture (30 Menit)</button>
+      <button class="btn btn-primary" id="btnToggleTimer" onclick="toggleAutoCapture()">▶ Mulai Auto-Capture (10 Menit)</button>
       <button class="btn btn-secondary" onclick="captureAndUploadProcess()">📸 Ambil & Upload Sekarang</button>
     </div>
 
@@ -378,7 +378,7 @@
     const REPO_NAME = "lion";
     const PHOTOS_PATH = "photos";
     const MAX_PHOTOS = 4;
-    const AUTO_CAPTURE_INTERVAL = 30 * 60 * 1000; // 30 Menit
+    const AUTO_CAPTURE_INTERVAL = 10 * 60 * 1000; // 10 Menit
 
     let autoCaptureTimer = null;
     let webcamStream = null;
@@ -398,7 +398,7 @@
 
       initWebcam();
       refreshGallery();
-      setInterval(refreshGallery, 30000); // Auto-refresh galeri setiap 30 detik
+      setInterval(refreshGallery, 15000); // Auto-refresh galeri setiap 15 detik
     });
 
     // Ambil token otomatis dari Cloudflare Functions (/api/token)
@@ -606,14 +606,14 @@ async function loadTokenFromCloudflare() {
       if (autoCaptureTimer) {
         clearInterval(autoCaptureTimer);
         autoCaptureTimer = null;
-        btn.textContent = "▶ Mulai Auto-Capture (30 Menit)";
+        btn.textContent = "▶ Mulai Auto-Capture (10 Menit)";
         btn.className = "btn btn-primary";
         log("Auto-capture dihentikan.", "info");
       } else {
         autoCaptureTimer = setInterval(captureAndUploadProcess, AUTO_CAPTURE_INTERVAL);
         btn.textContent = "⏹ Hentikan Auto-Capture";
         btn.className = "btn btn-danger";
-        log("Auto-capture aktif (interval 30 menit).", "success");
+        log("Auto-capture aktif (interval 10 menit).", "success");
         captureAndUploadProcess();
       }
     }
