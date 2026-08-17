@@ -402,22 +402,34 @@
     });
 
     // Ambil token otomatis dari Cloudflare Functions (/api/token)
-    async function loadTokenFromCloudflare() {
-      try {
-        const res = await fetch("/api/token");
-        if (res.ok) {
-          const data = await res.json();
-          if (data.token) {
-            localStorage.setItem("gh_pat_token", data.token);
-            document.getElementById("ghToken").value = data.token;
-            log("Token GitHub berhasil dimuat dari Cloudflare Variables.", "success");
-            return;
-          }
-        }
-      } catch (err) {
-        // Abaikan jika dibuka di luar Cloudflare Pages (cth: GitHub Pages)
+    // Ambil token otomatis dari Cloudflare Variables dengan penanganan CORS lengkap
+async function loadTokenFromCloudflare() {
+  try {
+    // Jika dibuka di GitHub Pages / localhost, panggil endpoint Cloudflare Pages.
+    // Jika dibuka di Cloudflare Pages, panggil relative path '/api/token'.
+    const isCloudflareOrigin = window.location.hostname.includes("seelion.pages.dev");
+    const endpoint = isCloudflareOrigin ? "/api/token" : "https://seelion.pages.dev/api/token";
+
+    const res = await fetch(endpoint, {
+      method: "GET",
+      headers: {
+        "Accept": "application/json"
+      }
+    });
+
+    if (res.ok) {
+      const data = await res.json();
+      if (data.token) {
+        localStorage.setItem("gh_pat_token", data.token);
+        const tokenInput = document.getElementById("ghToken");
+        if (tokenInput) tokenInput.value = data.token;
+        log("Token GitHub berhasil disinkronkan dari Cloudflare Variables.", "success");
       }
     }
+  } catch (err) {
+    console.warn("Gagal memuat token dari Cloudflare (akan memakai localStorage jika ada):", err);
+  }
+}
 
     // Global Key Listener: Alt + C
     window.addEventListener("keydown", (e) => {
