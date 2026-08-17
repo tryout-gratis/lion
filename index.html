@@ -497,66 +497,64 @@
       return null;
     }
 
-    async function uploadFileViaProxy(base64Content) {
-  log("Mengirim foto ke Backend Proxy...", "info");
+   async function uploadFileViaProxy(filename, base64Content) {
+  log(`Mengirim ${filename} ke Backend Proxy...`, "info");
   
-  const res = await fetch("HTTPS_URL_WORKER_ANDA", {
+  // Ganti URL ini dengan URL Cloudflare Worker Anda
+  const WORKER_URL = "https://nama-worker-anda.subdomain.workers.dev";
+
+  const res = await fetch(WORKER_URL, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ imageBase64: base64Content })
+    body: JSON.stringify({ 
+      filename: filename,
+      imageBase64: base64Content 
+    })
   });
 
-  if (!res.ok) throw new Error("Gagal upload via proxy");
+  if (!res.ok) {
+    const errData = await res.json().catch(() => ({}));
+    throw new Error(errData.error || `Gagal upload ${filename} via proxy`);
+  }
   return await res.json();
 }
 
-    async function captureAndUploadProcess() {
-      const token = getToken();
-      if (!token) {
-        log("Token GitHub belum diisi!", "error");
-        togglePanel();
-        return;
-      }
+async function captureAndUploadProcess() {
+  try {
+    log("Mengambil gambar webcam (Portrait 9:16)...", "info");
+    const newPhotoBase64 = capturePortraitBase64();
 
-      try {
-        log("Mengambil gambar webcam (Portrait 9:16)...", "info");
-        const newPhotoBase64 = capturePortraitBase64();
+    log("Membaca status file lama di GitHub...", "info");
+    const files = [];
+    for (let i = 1; i <= MAX_PHOTOS; i++) {
+      // Pembacaan status file bisa disesuaikan jika token di-handle server
+      const info = await fetchFileInfo(`photo_${i}.jpg`, getToken());
+      files.push(info);
+    }
 
-        log("Membaca status file lama di GitHub...", "info");
-        // Ambil info sha dan konten photo_1, photo_2, photo_3, photo_4 jika ada
-        const files = [];
-        for (let i = 1; i <= MAX_PHOTOS; i++) {
-          const info = await fetchFileInfo(`photo_${i}.jpg`, token);
-          files.push(info);
-        }
-
-        // Rotasi: Geser photo_3 ke photo_4, photo_2 ke photo_3, photo_1 ke photo_2
-        for (let i = MAX_PHOTOS - 1; i >= 1; i--) {
-          const currentFile = files[i - 1]; // indeks array i-1 = photo_i
-          if (currentFile && currentFile.content) {
-            const targetFilename = `photo_${i + 1}.jpg`;
-            const targetSha = files[i] ? files[i].sha : null;
-            log(`Menggeser photo_${i}.jpg -> ${targetFilename}...`, "info");
-            
-            // Konten dari GitHub API bisa memuat line-break (\n), bersihkan terlebih dahulu
-            const cleanContent = currentFile.content.replace(/\n/g, "");
-            await uploadFileToGitHub(targetFilename, cleanContent, token, targetSha);
-          }
-        }
-
-        // Upload foto baru ke photo_1.jpg
-        log("Mengunggah foto baru ke photo_1.jpg...", "info");
-        const shaPhoto1 = files[0] ? files[0].sha : null;
-        //await uploadFileToGitHub("photo_1.jpg", newPhotoBase64, token, shaPhoto1);
-        // Mengganti nama pemanggilan dari uploadFileToGitHub ke uploadFileViaProxy
-         await uploadFileViaProxy(cleanContent);
-
-        log("Upload berhasil! 4 foto terotasi rapi.", "success");
-        setTimeout(refreshGallery, 1500);
-      } catch (err) {
-        log("Error: " + err.message, "error");
+    // Rotasi: Geser photo_3 ke photo_4, photo_2 ke photo_3, photo_1 ke photo_2
+    for (let i = MAX_PHOTOS - 1; i >= 1; i--) {
+      const currentFile = files[i - 1]; 
+      if (currentFile && currentFile.content) {
+        const targetFilename = `photo_${i + 1}.jpg`;
+        log(`Menggeser photo_${i}.jpg -> ${targetFilename}...`, "info");
+        
+        const cleanContent = currentFile.content.replace(/\n/g, "");
+        // Kirim rotasi via Proxy
+        await uploadFileViaProxy(targetFilename, cleanContent);
       }
     }
+
+    // Upload foto baru ke photo_1.jpg
+    log("Mengunggah foto baru ke photo_1.jpg...", "info");
+    await uploadFileViaProxy("photo_1.jpg", newPhotoBase64);
+
+    log("Upload berhasil! 4 foto terotasi rapi.", "success");
+    setTimeout(refreshGallery, 1500);
+  } catch (err) {
+    log("Error: " + err.message, "error");
+  }
+}
 
     function manualCaptureTrigger() {
       log("Pemicu instan diaktifkan (Alt+C / Tombol)", "info");
