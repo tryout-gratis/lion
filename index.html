@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>SeeLion Live - Automated Portrait Gallery</title>
+  <title id="appTitle">SeeLion Live - Automated Portrait Gallery</title>
   <style>
     :root {
       --bg-dark: #0f172a;
@@ -295,11 +295,11 @@
   <!-- Header -->
   <header>
     <div class="brand">
-      <span>🦁</span> SeeLion
+      <span id="uiBrandLogo"></span> <span id="uiBrandName"></span>
     </div>
     <div class="header-actions">
       <button class="btn btn-secondary" onclick="togglePanel()">⚙️ Control</button>
-      <button class="btn btn-primary" onclick="manualCaptureTrigger()">📸 Capture (Alt+C)</button>
+      <button class="btn btn-primary" id="uiBtnCapture" onclick="manualCaptureTrigger()"></button>
     </div>
   </header>
 
@@ -307,30 +307,14 @@
   <main>
     <div class="gallery-header">
       <div>
-        <h2>4 Foto Lion Terkini</h2>
-        <p style="color: var(--text-muted); font-size: 0.875rem;">Difoto oleh camera laptop</p>
+        <h2 id="uiGalleryTitle"></h2>
+        <p id="uiGallerySubtitle" style="color: var(--text-muted); font-size: 0.875rem;"></p>
       </div>
       <button class="btn btn-secondary" onclick="refreshGallery()">🔄 Refresh</button>
     </div>
 
     <div class="gallery-grid" id="galleryContainer">
-      <!-- 4 Portrait Cards -->
-      <div class="photo-card" id="card-1">
-        <div class="photo-wrapper"><img src="" alt="Photo 1" onerror="handleImgError(this)" /></div>
-        <div class="photo-meta"><span class="badge">Terbaru #1</span><span class="timestamp">-</span></div>
-      </div>
-      <div class="photo-card" id="card-2">
-        <div class="photo-wrapper"><img src="" alt="Photo 2" onerror="handleImgError(this)" /></div>
-        <div class="photo-meta"><span class="badge">Foto #2</span><span class="timestamp">-</span></div>
-      </div>
-      <div class="photo-card" id="card-3">
-        <div class="photo-wrapper"><img src="" alt="Photo 3" onerror="handleImgError(this)" /></div>
-        <div class="photo-meta"><span class="badge">Foto #3</span><span class="timestamp">-</span></div>
-      </div>
-      <div class="photo-card" id="card-4">
-        <div class="photo-wrapper"><img src="" alt="Photo 4" onerror="handleImgError(this)" /></div>
-        <div class="photo-meta"><span class="badge">Foto #4</span><span class="timestamp">-</span></div>
-      </div>
+      <!-- Cards di-render secara dinamis oleh JS berdasarkan MAX_PHOTOS -->
     </div>
   </main>
 
@@ -359,35 +343,98 @@
 
     <!-- Capture Automation Controls -->
     <div class="form-group" style="gap: 0.75rem;">
-      <button class="btn btn-primary" id="btnToggleTimer" onclick="toggleAutoCapture()">▶ Mulai Auto-Capture (5 Menit)</button>
+      <button class="btn btn-primary" id="btnToggleTimer" onclick="toggleAutoCapture()"></button>
       <button class="btn btn-secondary" onclick="captureAndUploadProcess()">📸 Ambil & Upload Sekarang</button>
     </div>
 
     <!-- Logs / Status -->
     <div class="form-group">
       <label>Status & Log Eksekusi:</label>
-      <div class="status-box" id="logBox">Menunggu aksi...</div>
+      <div class="status-box" id="logBox"></div>
     </div>
   </div>
 
   <canvas id="cropCanvas"></canvas>
 
   <script>
-    // --- KONFIGURASI REPO ---
-    const REPO_OWNER = "tryout-gratis";
-    const REPO_NAME = "lion";
-    const PHOTOS_PATH = "photos";
-    const MAX_PHOTOS = 4;
-    const AUTO_CAPTURE_INTERVAL = 5 * 60 * 1000; // 5 Menit
+    // ==========================================
+    // ⚙️ KONFIGURASI TERSENTRALISASI (CUSTOMIZABLE)
+    // ==========================================
+    const APP_CONFIG = {
+      // 1. Variabel Konfigurasi Sistem & Repositori
+      REPO_OWNER: "tryout-gratis",
+      REPO_NAME: "lion",
+      PHOTOS_PATH: "photos",
+      MAX_PHOTOS: 4,
+      AUTO_CAPTURE_MINUTES: 5, // Durasi interval auto-capture (Default: 5 Menit)
+      AUTO_REFRESH_INTERVAL: 15000,
+      CLOUDFLARE_DOMAIN: "seelion.pages.dev",
+
+      // 2. Wording Teks Utama & Antarmuka (UI)
+      APP_TITLE: "Auto Portrait Memory",
+      BRAND_NAME: "Couple",
+      BRAND_LOGO: "🦁",
+      GALLERY_TITLE: "4 Foto Terkini",
+      GALLERY_SUBTITLE: "Difoto oleh camera laptop",
+      BTN_CAPTURE_TEXT: "📸 Capture (Alt+C)",
+      
+      // Dynamic Getter Wording Tombol Auto Capture
+      get BTN_AUTO_CAPTURE_START() {
+        return `▶ Mulai Auto-Capture (${this.AUTO_CAPTURE_MINUTES} Menit)`;
+      },
+      BTN_AUTO_CAPTURE_STOP: "⏹ Stop Auto-Capture",
+
+      // 3. Wording Label Badge & Notifikasi Log
+      BADGE_LATEST: "Terbaru #1",
+      BADGE_OLDER_PREFIX: "Foto #",
+      LOG_INITIAL_STATUS: "Menunggu aksi...",
+      LOG_SUCCESS_TOKEN: "Token GitHub berhasil disinkronkan dari Cloudflare Variables.",
+
+      // Dynamic Getter Interval Milidetik
+      get AUTO_CAPTURE_INTERVAL() {
+        return this.AUTO_CAPTURE_MINUTES * 60 * 1000;
+      }
+    };
 
     let autoCaptureTimer = null;
     let webcamStream = null;
     const video = document.getElementById("webcamVideo");
     const canvas = document.getElementById("cropCanvas");
 
-    // --- INISIALISASI ---
+    // --- INISIALISASI DOM & TAMPILAN ---
+    function initUI() {
+      // Set Metadata Page
+      document.title = APP_CONFIG.APP_TITLE;
+
+      // Set Wording UI Header & Section
+      document.getElementById("uiBrandLogo").textContent = APP_CONFIG.BRAND_LOGO;
+      document.getElementById("uiBrandName").textContent = APP_CONFIG.BRAND_NAME;
+      document.getElementById("uiBtnCapture").textContent = APP_CONFIG.BTN_CAPTURE_TEXT;
+      document.getElementById("uiGalleryTitle").textContent = APP_CONFIG.GALLERY_TITLE;
+      document.getElementById("uiGallerySubtitle").textContent = APP_CONFIG.GALLERY_SUBTITLE;
+      document.getElementById("btnToggleTimer").textContent = APP_CONFIG.BTN_AUTO_CAPTURE_START;
+      document.getElementById("logBox").textContent = APP_CONFIG.LOG_INITIAL_STATUS;
+
+      // Render Galeri Kartu secara Dinamis berdasarkan MAX_PHOTOS
+      const container = document.getElementById("galleryContainer");
+      container.innerHTML = "";
+      for (let i = 1; i <= APP_CONFIG.MAX_PHOTOS; i++) {
+        const badgeLabel = i === 1 ? APP_CONFIG.BADGE_LATEST : `${APP_CONFIG.BADGE_OLDER_PREFIX}${i}`;
+        const cardHtml = `
+          <div class="photo-card" id="card-${i}">
+            <div class="photo-wrapper"><img src="" alt="Photo ${i}" onerror="handleImgError(this)" /></div>
+            <div class="photo-meta"><span class="badge">${badgeLabel}</span><span class="timestamp">-</span></div>
+          </div>
+        `;
+        container.insertAdjacentHTML("beforeend", cardHtml);
+      }
+    }
+
+    // --- INISIALISASI APLIKASI ---
     window.addEventListener("DOMContentLoaded", async () => {
-      // 1. Coba ambil token dari Cloudflare Pages Variables terlebih dahulu
+      initUI();
+
+      // 1. Coba ambil token dari Cloudflare Pages Variables
       await loadTokenFromCloudflare();
 
       // 2. Jika tidak ada di Cloudflare, ambil dari localStorage
@@ -398,38 +445,33 @@
 
       initWebcam();
       refreshGallery();
-      setInterval(refreshGallery, 15000); // Auto-refresh galeri setiap 15 detik
+      setInterval(refreshGallery, APP_CONFIG.AUTO_REFRESH_INTERVAL);
     });
 
-    // Ambil token otomatis dari Cloudflare Functions (/api/token)
     // Ambil token otomatis dari Cloudflare Variables dengan penanganan CORS lengkap
-async function loadTokenFromCloudflare() {
-  try {
-    // Jika dibuka di GitHub Pages / localhost, panggil endpoint Cloudflare Pages.
-    // Jika dibuka di Cloudflare Pages, panggil relative path '/api/token'.
-    const isCloudflareOrigin = window.location.hostname.includes("seelion.pages.dev");
-    const endpoint = isCloudflareOrigin ? "/api/token" : "https://seelion.pages.dev/api/token";
+    async function loadTokenFromCloudflare() {
+      try {
+        const isCloudflareOrigin = window.location.hostname.includes(APP_CONFIG.CLOUDFLARE_DOMAIN);
+        const endpoint = isCloudflareOrigin ? "/api/token" : `https://${APP_CONFIG.CLOUDFLARE_DOMAIN}/api/token`;
 
-    const res = await fetch(endpoint, {
-      method: "GET",
-      headers: {
-        "Accept": "application/json"
-      }
-    });
+        const res = await fetch(endpoint, {
+          method: "GET",
+          headers: { "Accept": "application/json" }
+        });
 
-    if (res.ok) {
-      const data = await res.json();
-      if (data.token) {
-        localStorage.setItem("gh_pat_token", data.token);
-        const tokenInput = document.getElementById("ghToken");
-        if (tokenInput) tokenInput.value = data.token;
-        log("Token GitHub berhasil disinkronkan dari Cloudflare Variables.", "success");
+        if (res.ok) {
+          const data = await res.json();
+          if (data.token) {
+            localStorage.setItem("gh_pat_token", data.token);
+            const tokenInput = document.getElementById("ghToken");
+            if (tokenInput) tokenInput.value = data.token;
+            log(APP_CONFIG.LOG_SUCCESS_TOKEN, "success");
+          }
+        }
+      } catch (err) {
+        console.warn("Gagal memuat token dari Cloudflare (akan memakai localStorage jika ada):", err);
       }
     }
-  } catch (err) {
-    console.warn("Gagal memuat token dari Cloudflare (akan memakai localStorage jika ada):", err);
-  }
-}
 
     // Global Key Listener: Alt + C
     window.addEventListener("keydown", (e) => {
@@ -513,9 +555,9 @@ async function loadTokenFromCloudflare() {
       return dataUrl.split(",")[1];
     }
 
-    // --- GITHUB REST API & ROTASI FILE (MAX 4 FOTO) ---
+    // --- GITHUB REST API & ROTASI FILE ---
     async function fetchFileInfo(filename, token) {
-      const res = await fetch(`https://api.github.com/repos/${REPO_OWNER}/${REPO_NAME}/contents/${PHOTOS_PATH}/${filename}`, {
+      const res = await fetch(`https://api.github.com/repos/${APP_CONFIG.REPO_OWNER}/${APP_CONFIG.REPO_NAME}/contents/${APP_CONFIG.PHOTOS_PATH}/${filename}`, {
         headers: {
           "Authorization": `Bearer ${token}`,
           "Accept": "application/vnd.github+json"
@@ -528,7 +570,7 @@ async function loadTokenFromCloudflare() {
     }
 
     async function uploadFileToGitHub(filename, base64Content, token, sha = null) {
-      const url = `https://api.github.com/repos/${REPO_OWNER}/${REPO_NAME}/contents/${PHOTOS_PATH}/${filename}`;
+      const url = `https://api.github.com/repos/${APP_CONFIG.REPO_OWNER}/${APP_CONFIG.REPO_NAME}/contents/${APP_CONFIG.PHOTOS_PATH}/${filename}`;
       const payload = {
         message: `Auto-update ${filename} [skip ci]`,
         content: base64Content
@@ -566,13 +608,13 @@ async function loadTokenFromCloudflare() {
 
         log("Mengecek file existing di GitHub...", "info");
         const files = [];
-        for (let i = 1; i <= MAX_PHOTOS; i++) {
+        for (let i = 1; i <= APP_CONFIG.MAX_PHOTOS; i++) {
           const info = await fetchFileInfo(`photo_${i}.jpg`, token);
           files.push(info);
         }
 
-        // Geser foto lama (photo_3 -> photo_4, photo_2 -> photo_3, photo_1 -> photo_2)
-        for (let i = MAX_PHOTOS - 1; i >= 1; i--) {
+        // Geser foto lama
+        for (let i = APP_CONFIG.MAX_PHOTOS - 1; i >= 1; i--) {
           const currentFile = files[i - 1];
           if (currentFile && currentFile.content) {
             const targetFilename = `photo_${i + 1}.jpg`;
@@ -584,12 +626,12 @@ async function loadTokenFromCloudflare() {
           }
         }
 
-        // Upload foto baru ke slot photo_1.jpg
+        // Upload foto baru ke photo_1.jpg
         log("Mengunggah foto baru ke photo_1.jpg...", "info");
         const shaPhoto1 = files[0] ? files[0].sha : null;
         await uploadFileToGitHub("photo_1.jpg", newPhotoBase64, token, shaPhoto1);
 
-        log("Berhasil! 4 Foto berhasil dirotasi.", "success");
+        log(`Berhasil! ${APP_CONFIG.MAX_PHOTOS} Foto berhasil dirotasi.`, "success");
         setTimeout(refreshGallery, 1500);
       } catch (err) {
         log("Error: " + err.message, "error");
@@ -606,86 +648,50 @@ async function loadTokenFromCloudflare() {
       if (autoCaptureTimer) {
         clearInterval(autoCaptureTimer);
         autoCaptureTimer = null;
-        btn.textContent = "▶ Mulai Auto-Capture (5 Menit)";
+        btn.textContent = APP_CONFIG.BTN_AUTO_CAPTURE_START;
         btn.className = "btn btn-primary";
         log("Auto-capture dihentikan.", "info");
       } else {
-        autoCaptureTimer = setInterval(captureAndUploadProcess, AUTO_CAPTURE_INTERVAL);
-        btn.textContent = "⏹ Hentikan Auto-Capture";
+        autoCaptureTimer = setInterval(captureAndUploadProcess, APP_CONFIG.AUTO_CAPTURE_INTERVAL);
+        btn.textContent = APP_CONFIG.BTN_AUTO_CAPTURE_STOP;
         btn.className = "btn btn-danger";
-        log("Auto-capture aktif (interval 5 menit).", "success");
+        log(`Auto-capture aktif (interval ${APP_CONFIG.AUTO_CAPTURE_MINUTES} menit).`, "success");
         captureAndUploadProcess();
       }
     }
 
-    // --- TAMPILAN & AUTO REFRESH GALERI (Direct API Base64) ---
-    async function refreshGalleryORIGINAL() {
+    // --- TAMPILAN & AUTO REFRESH GALERI ---
+    async function refreshGallery() {
       const token = getToken();
-      const headers = { "Accept": "application/vnd.github+json" };
-      if (token) {
-        headers["Authorization"] = `Bearer ${token}`;
-      }
 
-      for (let i = 1; i <= MAX_PHOTOS; i++) {
+      for (let i = 1; i <= APP_CONFIG.MAX_PHOTOS; i++) {
         const card = document.getElementById(`card-${i}`);
+        if (!card) continue;
         const img = card.querySelector("img");
-        const timeLabel = card.querySelector(".timestamp");
+        const filename = `photo_${i}.jpg`;
 
         try {
-          const res = await fetch(`https://api.github.com/repos/${REPO_OWNER}/${REPO_NAME}/contents/${PHOTOS_PATH}/photo_${i}.jpg?t=${Date.now()}`, {
-            headers: headers
-          });
-
-          if (res.ok) {
-            const fileData = await res.json();
-            if (fileData.content) {
+          if (token) {
+            const fileData = await fetchFileInfo(filename, token);
+            if (fileData && fileData.content) {
               const cleanBase64 = fileData.content.replace(/\n/g, "");
               img.src = `data:image/jpeg;base64,${cleanBase64}`;
-              timeLabel.textContent = `Aktif: ${new Date().toLocaleTimeString()}`;
+            } else {
+              handleImgError(img);
             }
           } else {
-            handleImgError(img);
-            timeLabel.textContent = "Kosong";
+            const timestamp = Date.now();
+            img.src = `https://raw.githubusercontent.com/${APP_CONFIG.REPO_OWNER}/${APP_CONFIG.REPO_NAME}/main/${APP_CONFIG.PHOTOS_PATH}/${filename}?t=${timestamp}`;
           }
+
+          const timeLabel = card.querySelector(".timestamp");
+          timeLabel.textContent = `Sync: ${new Date().toLocaleTimeString()}`;
         } catch (err) {
+          console.error(`Gagal memuat ${filename}:`, err);
           handleImgError(img);
         }
       }
     }
-
-    // --- TAMPILAN & AUTO REFRESH GALERI ---
-async function refreshGallery() {
-  const token = getToken();
-
-  for (let i = 1; i <= MAX_PHOTOS; i++) {
-    const card = document.getElementById(`card-${i}`);
-    const img = card.querySelector("img");
-    const filename = `photo_${i}.jpg`;
-
-    try {
-      // Jika ada token PAT (misal di laptop kamu yang membuka web), ambil via GitHub API untuk menghindari cache/private repo
-      if (token) {
-        const fileData = await fetchFileInfo(filename, token);
-        if (fileData && fileData.content) {
-          const cleanBase64 = fileData.content.replace(/\n/g, "");
-          img.src = `data:image/jpeg;base64,${cleanBase64}`;
-        } else {
-          handleImgError(img);
-        }
-      } else {
-        // Untuk pengunjung luar tanpa token (Public Repo), ambil via GitHub Raw CDN dengan Cache-Buster
-        const timestamp = Date.now();
-        img.src = `https://raw.githubusercontent.com/${REPO_OWNER}/${REPO_NAME}/main/${PHOTOS_PATH}/${filename}?t=${timestamp}`;
-      }
-
-      const timeLabel = card.querySelector(".timestamp");
-      timeLabel.textContent = `Sync: ${new Date().toLocaleTimeString()}`;
-    } catch (err) {
-      console.error(`Gagal memuat ${filename}:`, err);
-      handleImgError(img);
-    }
-  }
-}
 
     function handleImgError(img) {
       img.src = "data:image/svg+xml;charset=UTF-8,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20width%3D%22720%22%20height%3D%221280%22%20viewBox%3D%220%200%20720%201280%22%3E%3Crect%20fill%3D%22%231e293b%22%20width%3D%22720%22%20height%3D%221280%22%2F%3E%3Ctext%20fill%3D%22%2364748b%22%20font-family%3D%22sans-serif%22%20font-size%3D%2228%22%20dy%3D%2210.5%22%20font-weight%3D%22bold%22%20x%3D%2250%25%22%20y%3D%2250%25%22%20text-anchor%3D%22middle%22%3EBelum%20Ada%20Foto%3C%2Ftext%3E%3C%2Fsvg%3E";
