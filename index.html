@@ -416,8 +416,8 @@
   <canvas id="cropCanvas"></canvas>
 
   <script>
-    // ==========================================
-    // ⚙️ KONFIGURASI TERSENTRALISASI (CUSTOMIZABLE)
+  // ==========================================
+    // ⚙️ KONFIGURASI TERSENTRALISASI
     // ==========================================
     const APP_CONFIG = {
       REPO_OWNER: "tryout-gratis",
@@ -452,48 +452,47 @@
 
     let autoCaptureTimer = null;
     let webcamStream = null;
-    
-    // Counter Global untuk Ring-Buffer Target Slot
     let photoIndex = parseInt(localStorage.getItem("ring_buffer_photo_index") || "0", 10);
 
     const video = document.getElementById("webcamVideo");
     const canvas = document.getElementById("cropCanvas");
 
+    // Helper Utilitas UTF-8 Base64 Safe
+    function safeBtoa(str) {
+      return btoa(encodeURIComponent(str).replace(/%([0-9A-F]{2})/g, (match, p1) => String.fromCharCode('0x' + p1)));
+    }
+
+    function safeAtob(str) {
+      try {
+        const cleanStr = str.replace(/[\r\n\s]/g, "");
+        return decodeURIComponent(Array.prototype.map.call(atob(cleanStr), c => '%' + ('00' + c.charCodeAt(0).toString(16)).slice(-2)).join(''));
+      } catch (e) {
+        return null;
+      }
+    }
+
     // ==========================================
-    // 💬 MODUL KOMENTAR TERISOLASI (MODULAR)
+    // 💬 MODUL KOMENTAR TERISOLASI
     // ==========================================
     const CommentModule = {
-      // 1. Ambil IP Public Viewer dari Ipify
-      // Mengubah IP '180.252.120.45' menjadi '180.252.***.***'
-async getPublicIP() {
-  try {
-    const res = await fetch("https://api.ipify.org?format=json");
-    if (!res.ok) throw new Error("Gagal mengambil IP");
-    const data = await res.json();
-    const rawIP = data.ip || "0.0.0.0";
-    
-    // Anonymize IPv4 (misal: 180.252.120.45 -> 180.252.***.***)
-    const parts = rawIP.split(".");
-    if (parts.length === 4) {
-      return `${parts[0]}.${parts[1]}.`;
-    }
-    return rawIP;
-  } catch (err) {
-    return "IP Unknown";
-  }
-},
-
-      // 2. Format Sanitasi HTML/XSS
-      escapeHtml(str) {
-        return str
-          .replace(/&/g, "&amp;")
-          .replace(/</g, "&lt;")
-          .replace(/>/g, "&gt;")
-          .replace(/"/g, "&quot;")
-          .replace(/'/g, "&#039;");
+      async getPublicIP() {
+        try {
+          const res = await fetch("https://api.ipify.org?format=json");
+          if (!res.ok) throw new Error("Gagal mengambil IP");
+          const data = await res.json();
+          const rawIP = data.ip || "0.0.0.0";
+          const parts = rawIP.split(".");
+          if (parts.length === 4) return `${parts[0]}.${parts[1]}.***.***`;
+          return rawIP;
+        } catch (err) {
+          return "IP Unknown";
+        }
       },
 
-      // 3. Render/Fetch Komentar untuk Slot Fisik Foto Tertentu
+      escapeHtml(str) {
+        return str.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&#039;");
+      },
+
       async renderComments(slotNumber, cardDOMIndex) {
         const token = getToken();
         const container = document.getElementById(`comments-list-card-${cardDOMIndex}`);
@@ -503,8 +502,8 @@ async getPublicIP() {
         try {
           const fileData = await fetchFileInfo(filename, token);
           if (fileData && fileData.content) {
-            const jsonString = decodeURIComponent(escape(atob(fileData.content.replace(/\n/g, ""))));
-            const comments = JSON.parse(jsonString);
+            const decoded = safeAtob(fileData.content);
+            const comments = JSON.parse(decoded || "[]");
 
             if (!comments || comments.length === 0) {
               container.innerHTML = `<span style="color:var(--text-muted); font-size:0.7rem;">Belum ada komentar</span>`;
@@ -525,7 +524,6 @@ async getPublicIP() {
         }
       },
 
-      // 4. Posting Komentar Baru
       async postComment(slotNumber, cardDOMIndex) {
         const token = getToken();
         const input = document.getElementById(`input-card-${cardDOMIndex}`);
@@ -542,7 +540,6 @@ async getPublicIP() {
         try {
           log(`[Komentar Slot ${slotNumber}] Mengambil IP public...`, "info");
           const userIP = await this.getPublicIP();
-
           const filename = `comments_${slotNumber}.json`;
           const existingFile = await fetchFileInfo(filename, token);
           
@@ -550,20 +547,14 @@ async getPublicIP() {
           let sha = null;
 
           if (existingFile && existingFile.content) {
-            const jsonString = decodeURIComponent(escape(atob(existingFile.content.replace(/\n/g, ""))));
-            comments = JSON.parse(jsonString);
+            const decoded = safeAtob(existingFile.content);
+            if (decoded) comments = JSON.parse(decoded);
             sha = existingFile.sha;
           }
 
-          comments.push({
-            ip: userIP,
-            text: text,
-            timestamp: new Date().toISOString()
-          });
-
-          // UTF-8 Base64 Safe Encoding
+          comments.push({ ip: userIP, text: text, timestamp: new Date().toISOString() });
           const jsonString = JSON.stringify(comments, null, 2);
-          const base64Content = btoa(unescape(encodeURIComponent(jsonString)));
+          const base64Content = safeBtoa(jsonString);
 
           log(`[Komentar Slot ${slotNumber}] Menyimpan komentar baru...`, "info");
           await uploadFileToGitHub(filename, base64Content, token, sha);
@@ -576,7 +567,6 @@ async getPublicIP() {
         }
       },
 
-      // 5. Reset File Komentar (Lifetime Sync Saat Foto Ditimpa)
       async resetComments(slotNumber) {
         const token = getToken();
         if (!token) return;
@@ -585,7 +575,7 @@ async getPublicIP() {
         try {
           const fileData = await fetchFileInfo(filename, token);
           log(`[Lifetime Sync] Mengosongkan komentar lama slot ${slotNumber}...`, "info");
-          const emptyContent = btoa("[]");
+          const emptyContent = safeBtoa("[]");
           await uploadFileToGitHub(filename, emptyContent, token, fileData ? fileData.sha : null);
         } catch (err) {
           console.warn(`Gagal mereset komentar slot ${slotNumber}:`, err);
@@ -593,10 +583,8 @@ async getPublicIP() {
       }
     };
 
-    // --- INISIALISASI DOM & TAMPILAN GALERI ---
     function initUI() {
       document.title = APP_CONFIG.APP_TITLE;
-
       document.getElementById("uiBrandLogo").textContent = APP_CONFIG.BRAND_LOGO;
       document.getElementById("uiBrandName").textContent = APP_CONFIG.BRAND_NAME;
       document.getElementById("uiBtnCapture").textContent = APP_CONFIG.BTN_CAPTURE_TEXT;
@@ -608,14 +596,11 @@ async getPublicIP() {
       const container = document.getElementById("galleryContainer");
       container.innerHTML = "";
       
-      // Render Card Skeleton DOM (1..4)
       for (let i = 1; i <= APP_CONFIG.MAX_PHOTOS; i++) {
         const cardHtml = `
           <div class="photo-card" id="card-${i}">
             <div class="photo-wrapper"><img src="" alt="Photo Posisi ${i}" onerror="handleImgError(this)" /></div>
             <div class="photo-meta"><span class="badge">-</span><span class="timestamp">-</span></div>
-            
-            <!-- Section Komentar Modular Dynamic -->
             <div class="comment-section">
               <div class="comment-list" id="comments-list-card-${i}">
                 <span style="color:var(--text-muted); font-size:0.7rem;">Memuat komentar...</span>
@@ -631,10 +616,8 @@ async getPublicIP() {
       }
     }
 
-    // --- INISIALISASI APLIKASI ---
     window.addEventListener("DOMContentLoaded", async () => {
       initUI();
-
       await loadTokenFromCloudflare();
 
       const savedToken = localStorage.getItem("gh_pat_token");
@@ -652,11 +635,7 @@ async getPublicIP() {
         const isCloudflareOrigin = window.location.hostname.includes(APP_CONFIG.CLOUDFLARE_DOMAIN);
         const endpoint = isCloudflareOrigin ? "/api/token" : `https://${APP_CONFIG.CLOUDFLARE_DOMAIN}/api/token`;
 
-        const res = await fetch(endpoint, {
-          method: "GET",
-          headers: { "Accept": "application/json" }
-        });
-
+        const res = await fetch(endpoint, { method: "GET", headers: { "Accept": "application/json" } });
         if (res.ok) {
           const data = await res.json();
           if (data.token) {
@@ -667,7 +646,7 @@ async getPublicIP() {
           }
         }
       } catch (err) {
-        console.warn("Gagal memuat token dari Cloudflare (akan memakai localStorage jika ada):", err);
+        console.warn("Gagal memuat token dari Cloudflare:", err);
       }
     }
 
@@ -706,7 +685,6 @@ async getPublicIP() {
       return localStorage.getItem("gh_pat_token") || document.getElementById("ghToken").value.trim();
     }
 
-    // --- AKSES WEBCAM & PORTRAIT CROP ---
     async function initWebcam() {
       try {
         webcamStream = await navigator.mediaDevices.getUserMedia({
@@ -749,19 +727,24 @@ async getPublicIP() {
       ctx.drawImage(video, sx, sy, sWidth, sHeight, 0, 0, canvas.width, canvas.height);
       
       const dataUrl = canvas.toDataURL("image/jpeg", 0.85);
-      return dataUrl.split(",")[1];
+      // Murni String Base64 tanpa header Data URL
+      return dataUrl.replace(/^data:image\/(png|jpeg|jpg);base64,/, "");
     }
 
-    // --- GITHUB REST API HELPER ---
     async function fetchFileInfo(filename, token) {
-      const res = await fetch(`https://api.github.com/repos/${APP_CONFIG.REPO_OWNER}/${APP_CONFIG.REPO_NAME}/contents/${APP_CONFIG.PHOTOS_PATH}/${filename}`, {
-        headers: {
-          "Authorization": `Bearer ${token}`,
-          "Accept": "application/vnd.github+json"
+      if (!token) return null;
+      try {
+        const res = await fetch(`https://api.github.com/repos/${APP_CONFIG.REPO_OWNER}/${APP_CONFIG.REPO_NAME}/contents/${APP_CONFIG.PHOTOS_PATH}/${filename}?t=${Date.now()}`, {
+          headers: {
+            "Authorization": `Bearer ${token}`,
+            "Accept": "application/vnd.github+json"
+          }
+        });
+        if (res.status === 200) {
+          return await res.json();
         }
-      });
-      if (res.status === 200) {
-        return await res.json();
+      } catch (e) {
+        return null;
       }
       return null;
     }
@@ -791,48 +774,44 @@ async getPublicIP() {
       return await res.json();
     }
 
-    // --- ALGORITMA UPLOAD FOTO + METADATA TIMESTAMP ---
-    // --- ALGORITMA UPLOAD FOTO + METADATA TIMESTAMP ---
-// --- ALGORITMA UPLOAD FOTO ---
-async function captureAndUploadProcess() {
-  const token = getToken();
-  if (!token) {
-    log("Token GitHub tidak ditemukan! Atur di Cloudflare Variables atau masukkan manual.", "error");
-    togglePanel();
-    return;
-  }
+    async function captureAndUploadProcess() {
+      const token = getToken();
+      if (!token) {
+        log("Token GitHub tidak ditemukan! Atur di Cloudflare Variables atau masukkan manual.", "error");
+        togglePanel();
+        return;
+      }
 
-  try {
-    log("Mengambil frame portrait 9:16...", "info");
-    const newPhotoBase64 = capturePortraitBase64();
+      try {
+        log("Mengambil frame portrait 9:16...", "info");
+        const newPhotoBase64 = capturePortraitBase64();
 
-    const targetSlot = (photoIndex % APP_CONFIG.MAX_PHOTOS) + 1;
-    const targetPhotoName = `photo_${targetSlot}.jpg`;
-    const targetMetaName = `meta_${targetSlot}.json`;
+        const targetSlot = (photoIndex % APP_CONFIG.MAX_PHOTOS) + 1;
+        const targetPhotoName = `photo_${targetSlot}.jpg`;
+        const targetMetaName = `meta_${targetSlot}.json`;
 
-    log(`[Slot Target ${targetSlot}] Mengunggah foto & metadata timestamp...`, "info");
+        log(`[Slot Target ${targetSlot}] Mengunggah foto & metadata timestamp...`, "info");
 
-    const photoFileInfo = await fetchFileInfo(targetPhotoName, token);
-    await uploadFileToGitHub(targetPhotoName, newPhotoBase64, token, photoFileInfo ? photoFileInfo.sha : null);
+        const photoFileInfo = await fetchFileInfo(targetPhotoName, token);
+        await uploadFileToGitHub(targetPhotoName, newPhotoBase64, token, photoFileInfo ? photoFileInfo.sha : null);
 
-    const metaDataJson = JSON.stringify({ created_at: new Date().toISOString() });
-    const metaBase64 = btoa(metaDataJson);
-    const metaFileInfo = await fetchFileInfo(targetMetaName, token);
-    await uploadFileToGitHub(targetMetaName, metaBase64, token, metaFileInfo ? metaFileInfo.sha : null);
+        const metaDataJson = JSON.stringify({ created_at: new Date().toISOString() });
+        const metaBase64 = safeBtoa(metaDataJson);
+        const metaFileInfo = await fetchFileInfo(targetMetaName, token);
+        await uploadFileToGitHub(targetMetaName, metaBase64, token, metaFileInfo ? metaFileInfo.sha : null);
 
-    await CommentModule.resetComments(targetSlot);
+        await CommentModule.resetComments(targetSlot);
 
-    photoIndex++;
-    localStorage.setItem("ring_buffer_photo_index", photoIndex.toString());
+        photoIndex++;
+        localStorage.setItem("ring_buffer_photo_index", photoIndex.toString());
 
-    log(`[Berhasil] Foto baru diunggah di Slot ${targetSlot}! Memperbarui galeri...`, "success");
-    
-    // Beri waktu 3.5 detik agar commit GitHub benar-benar rampung
-    setTimeout(refreshGallery, 3500);
-  } catch (err) {
-    log("Error: " + err.message, "error");
-  }
-}
+        log(`[Berhasil] Foto baru diunggah di Slot ${targetSlot}!`, "success");
+        
+        setTimeout(refreshGallery, 2500);
+      } catch (err) {
+        log("Error: " + err.message, "error");
+      }
+    }
 
     function manualCaptureTrigger() {
       log("Pemicu instan diaktifkan (Alt+C / Tombol)", "info");
@@ -856,119 +835,99 @@ async function captureAndUploadProcess() {
       }
     }
 
-    // --- REFRESH GALERI (Sorted By Metadata Timestamp Descending) ---
-    // --- REFRESH GALERI (Sorted By Metadata Timestamp Descending) ---
-// --- REFRESH GALERI (Sorted By Metadata Timestamp Descending) ---
-// --- REFRESH GALERI ---
-async function refreshGallery() {
-  const token = getToken();
-  const slotsData = [];
+    async function refreshGallery() {
+      const token = getToken();
+      const slotsData = [];
 
-  for (let i = 1; i <= APP_CONFIG.MAX_PHOTOS; i++) {
-    const photoName = `photo_${i}.jpg`;
-    const metaName = `meta_${i}.json`;
+      for (let i = 1; i <= APP_CONFIG.MAX_PHOTOS; i++) {
+        const photoName = `photo_${i}.jpg`;
+        const metaName = `meta_${i}.json`;
 
-    try {
-      let createdAt = 0;
-      let photoSrc = "";
-      let isValid = false;
+        let createdAt = 0;
+        let photoSrc = "";
+        let isValid = false;
 
-      if (token) {
-        // Ambil data via GitHub REST API (Bypass CDN Cache)
-        const photoFile = await fetchFileInfo(photoName, token);
-        if (photoFile && photoFile.content) {
-          const cleanBase64 = photoFile.content.replace(/[\r\n\s]/g, "");
-          photoSrc = `data:image/jpeg;base64,${cleanBase64}`;
-          isValid = true;
-        }
-      } else {
-        // Tanpa token: Tambahkan cache-buster timestamp unik
-        const rawUrl = `https://raw.githubusercontent.com/${APP_CONFIG.REPO_OWNER}/${APP_CONFIG.REPO_NAME}/main/${APP_CONFIG.PHOTOS_PATH}/${photoName}?nocache=${Date.now()}`;
         try {
-          const checkRes = await fetch(rawUrl, { method: "HEAD", cache: "no-store" });
-          if (checkRes.ok) {
-            photoSrc = rawUrl;
-            isValid = true;
+          if (token) {
+            const photoFile = await fetchFileInfo(photoName, token);
+            if (photoFile && photoFile.content) {
+              const cleanBase64 = photoFile.content.replace(/[\r\n\s]/g, "");
+              photoSrc = `data:image/jpeg;base64,${cleanBase64}`;
+              isValid = true;
+            }
+          } else {
+            photoSrc = `https://raw.githubusercontent.com/${APP_CONFIG.REPO_OWNER}/${APP_CONFIG.REPO_NAME}/main/${APP_CONFIG.PHOTOS_PATH}/${photoName}?t=${Date.now()}`;
+            isValid = true; // Fallback ke direct URL
           }
-        } catch (e) {
-          isValid = false;
+
+          if (isValid) {
+            try {
+              const metaFile = await fetchFileInfo(metaName, token);
+              if (metaFile && metaFile.content) {
+                const decodedMeta = safeAtob(metaFile.content);
+                if (decodedMeta) {
+                  const metaJson = JSON.parse(decodedMeta);
+                  createdAt = new Date(metaJson.created_at).getTime();
+                }
+              }
+            } catch (e) {
+              createdAt = 1;
+            }
+          }
+
+          slotsData.push({
+            slot: i,
+            timestamp: createdAt > 0 ? createdAt : (isValid ? 1 : 0),
+            src: photoSrc,
+            valid: isValid
+          });
+        } catch (err) {
+          slotsData.push({ slot: i, timestamp: 0, src: "", valid: false });
         }
       }
 
-      // Metadata handling
-      if (isValid) {
-        try {
-          const metaFile = await fetchFileInfo(metaName, token);
-          if (metaFile && metaFile.content) {
-            const cleanMeta = metaFile.content.replace(/[\r\n\s]/g, "");
-            const metaJson = JSON.parse(decodeURIComponent(escape(atob(cleanMeta))));
-            createdAt = new Date(metaJson.created_at).getTime();
-          }
-        } catch (e) {
-          createdAt = 1; // Fallback jika metadata belum ada
-        }
-      }
+      // FIFO Sorting berdasarkan Timestamp
+      slotsData.sort((a, b) => b.timestamp - a.timestamp);
 
-      slotsData.push({
-        slot: i,
-        timestamp: createdAt > 0 ? createdAt : (isValid ? 1 : 0),
-        src: photoSrc,
-        valid: isValid
+      slotsData.forEach((item, index) => {
+        const cardDOMIndex = index + 1;
+        const card = document.getElementById(`card-${cardDOMIndex}`);
+        if (!card) return;
+        
+        const img = card.querySelector("img");
+        const badge = card.querySelector(".badge");
+        const timeLabel = card.querySelector(".timestamp");
+
+        if (item.valid && item.src) {
+          img.src = item.src;
+          badge.textContent = index === 0 ? APP_CONFIG.BADGE_LATEST : `${APP_CONFIG.BADGE_OLDER_PREFIX}${index + 1}`;
+          
+          if (item.timestamp > 1) {
+            const dateObj = new Date(item.timestamp);
+            timeLabel.textContent = dateObj.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+          } else {
+            timeLabel.textContent = `Slot #${item.slot}`;
+          }
+          
+          CommentModule.renderComments(item.slot, cardDOMIndex);
+
+          const input = document.getElementById(`input-card-${cardDOMIndex}`);
+          const btn = document.getElementById(`btn-send-card-${cardDOMIndex}`);
+
+          if (input && btn) {
+            input.onkeydown = (e) => {
+              if (e.key === "Enter") CommentModule.postComment(item.slot, cardDOMIndex);
+            };
+            btn.onclick = () => CommentModule.postComment(item.slot, cardDOMIndex);
+          }
+        } else {
+          handleImgError(img);
+          badge.textContent = `${APP_CONFIG.BADGE_OLDER_PREFIX}${cardDOMIndex}`;
+          timeLabel.textContent = "Kosong";
+          CommentModule.renderComments(item.slot, cardDOMIndex);
+        }
       });
-    } catch (err) {
-      slotsData.push({ slot: i, timestamp: 0, src: "", valid: false });
     }
-  }
-
-  // Sorting FIFO (Terbaru ke Tertua)
-  slotsData.sort((a, b) => b.timestamp - a.timestamp);
-
-  // Render Ke UI
-  slotsData.forEach((item, index) => {
-    const cardDOMIndex = index + 1;
-    const card = document.getElementById(`card-${cardDOMIndex}`);
-    if (!card) return;
-    
-    const img = card.querySelector("img");
-    const badge = card.querySelector(".badge");
-    const timeLabel = card.querySelector(".timestamp");
-
-    if (item.valid) {
-      // Pasang gambar tanpa memicu onerror palsu
-      img.onerror = null; // Lepas sementara agar tidak loop error jika render lambat
-      img.src = item.src;
-      img.onerror = function() { handleImgError(this); };
-
-      badge.textContent = index === 0 ? APP_CONFIG.BADGE_LATEST : `${APP_CONFIG.BADGE_OLDER_PREFIX}${index + 1}`;
-      
-      if (item.timestamp > 1) {
-        const dateObj = new Date(item.timestamp);
-        timeLabel.textContent = dateObj.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-      } else {
-        timeLabel.textContent = `Slot #${item.slot}`;
-      }
-      
-      CommentModule.renderComments(item.slot, cardDOMIndex);
-
-      const input = document.getElementById(`input-card-${cardDOMIndex}`);
-      const btn = document.getElementById(`btn-send-card-${cardDOMIndex}`);
-
-      if (input && btn) {
-        input.onkeydown = (e) => {
-          if (e.key === "Enter") CommentModule.postComment(item.slot, cardDOMIndex);
-        };
-        btn.onclick = () => CommentModule.postComment(item.slot, cardDOMIndex);
-      }
-    } else {
-      handleImgError(img);
-      badge.textContent = `${APP_CONFIG.BADGE_OLDER_PREFIX}${cardDOMIndex}`;
-      timeLabel.textContent = "Kosong";
-      CommentModule.renderComments(item.slot, cardDOMIndex);
-    }
-  });
-}
-
- 
 
     function handleImgError(img) {
       img.src = "data:image/svg+xml;charset=UTF-8,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20width%3D%22720%22%20height%3D%221280%22%20viewBox%3D%220%200%20720%201280%22%3E%3Crect%20fill%3D%22%231e293b%22%20width%3D%22720%22%20height%3D%221280%22%2F%3E%3Ctext%20fill%3D%22%2364748b%22%20font-family%3D%22sans-serif%22%20font-size%3D%2228%22%20dy%3D%2210.5%22%20font-weight%3D%22bold%22%20x%3D%2250%25%22%20y%3D%2250%25%22%20text-anchor%3D%22middle%22%3EBelum%20Ada%20Foto%3C%2Ftext%3E%3C%2Fsvg%3E";
