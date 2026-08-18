@@ -444,7 +444,7 @@
       BADGE_OLDER_PREFIX: "Foto #",
       LOG_INITIAL_STATUS: "Menunggu aksi...",
       LOG_SUCCESS_TOKEN: "Token GitHub berhasil disinkronkan dari Cloudflare Variables.",
-      NO_COMMENTS_TEXT: "Belum ada komentar",
+      NO_COMMENTS_TEXT: "",
 
       get AUTO_CAPTURE_INTERVAL() {
         return this.AUTO_CAPTURE_MINUTES * 60 * 1000;
@@ -483,7 +483,7 @@
           const data = await res.json();
           const rawIP = data.ip || "0.0.0.0";
           const parts = rawIP.split(".");
-          if (parts.length === 4) return `${parts[0]}.${parts[1]}.***.***`;
+          if (parts.length === 4) return `${parts[0]}.${parts[1]}`;
           return rawIP;
         } catch (err) {
           return "IP Unknown";
