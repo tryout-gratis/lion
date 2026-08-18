@@ -464,16 +464,24 @@
     // ==========================================
     const CommentModule = {
       // 1. Ambil IP Public Viewer dari Ipify
-      async getPublicIP() {
-        try {
-          const res = await fetch("https://api.ipify.org?format=json");
-          if (!res.ok) throw new Error("Gagal mengambil IP");
-          const data = await res.json();
-          return data.ip || "0.0.0.0";
-        } catch (err) {
-          return "IP Unknown";
-        }
-      },
+      // Mengubah IP '180.252.120.45' menjadi '180.252.***.***'
+async getPublicIP() {
+  try {
+    const res = await fetch("https://api.ipify.org?format=json");
+    if (!res.ok) throw new Error("Gagal mengambil IP");
+    const data = await res.json();
+    const rawIP = data.ip || "0.0.0.0";
+    
+    // Anonymize IPv4 (misal: 180.252.120.45 -> 180.252.***.***)
+    const parts = rawIP.split(".");
+    if (parts.length === 4) {
+      return `${parts[0]}.${parts[1]}.`;
+    }
+    return rawIP;
+  } catch (err) {
+    return "IP Unknown";
+  }
+},
 
       // 2. Format Sanitasi HTML/XSS
       escapeHtml(str) {
