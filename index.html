@@ -862,11 +862,11 @@ async function captureAndUploadProcess() {
 
     // --- REFRESH GALERI (Sorted By Metadata Timestamp Descending) ---
     // --- REFRESH GALERI (Sorted By Metadata Timestamp Descending) ---
+// --- REFRESH GALERI (Sorted By Metadata Timestamp Descending) ---
 async function refreshGallery() {
   const token = getToken();
   const slotsData = [];
 
-  // Fetch Metadata & Foto dari semua slot
   for (let i = 1; i <= APP_CONFIG.MAX_PHOTOS; i++) {
     const photoName = `photo_${i}.jpg`;
     const metaName = `meta_${i}.json`;
@@ -885,12 +885,20 @@ async function refreshGallery() {
           isValid = true;
         }
       } else {
-        const timestamp = Date.now();
-        photoSrc = `https://raw.githubusercontent.com/${APP_CONFIG.REPO_OWNER}/${APP_CONFIG.REPO_NAME}/main/${APP_CONFIG.PHOTOS_PATH}/${photoName}?t=${timestamp}`;
-        isValid = true;
+        // Tanpa token: Cek ketersediaan file via HEAD request agar tidak kena 404 onError
+        const rawUrl = `https://raw.githubusercontent.com/${APP_CONFIG.REPO_OWNER}/${APP_CONFIG.REPO_NAME}/main/${APP_CONFIG.PHOTOS_PATH}/${photoName}`;
+        try {
+          const checkRes = await fetch(rawUrl, { method: "HEAD" });
+          if (checkRes.ok) {
+            photoSrc = `${rawUrl}?t=${Date.now()}`;
+            isValid = true;
+          }
+        } catch (e) {
+          isValid = false;
+        }
       }
 
-      // 2. Baca Metadata Waktu jika Foto Ada
+      // 2. Baca Metadata Waktu Jika Foto Valid/Ada
       if (isValid) {
         try {
           const metaFile = await fetchFileInfo(metaName, token);
@@ -899,8 +907,7 @@ async function refreshGallery() {
             createdAt = new Date(metaJson.created_at).getTime();
           }
         } catch (e) {
-          // Fallback jika meta_X.json belum ada: gunakan timestamp default 1
-          createdAt = 1;
+          createdAt = 1; // Fallback jika metadata belum ada
         }
       }
 
@@ -915,12 +922,12 @@ async function refreshGallery() {
     }
   }
 
-  // SIFAT FIFO: Urutkan dari Metadata Timestamp Terbaru -> Tertua
+  // FIFO: Urutkan dari Metadata Timestamp Terbaru -> Tertua
   slotsData.sort((a, b) => b.timestamp - a.timestamp);
 
-  // Render Hasil Sorting Ke Tampilan DOM Kartu 1..4
+  // Render Ke Tampilan UI Card (1..4)
   slotsData.forEach((item, index) => {
-    const cardDOMIndex = index + 1; // Kartu UI (1, 2, 3, 4)
+    const cardDOMIndex = index + 1;
     const card = document.getElementById(`card-${cardDOMIndex}`);
     if (!card) return;
     
@@ -928,23 +935,19 @@ async function refreshGallery() {
     const badge = card.querySelector(".badge");
     const timeLabel = card.querySelector(".timestamp");
 
-    // BUG FIX: Cukup pastikan item.valid === true (tanpa syarat item.timestamp > 0)
     if (item.valid) {
       img.src = item.src;
       badge.textContent = index === 0 ? APP_CONFIG.BADGE_LATEST : `${APP_CONFIG.BADGE_OLDER_PREFIX}${index + 1}`;
       
-      // Format Jam/Tanggal Metadata
       if (item.timestamp > 1) {
         const dateObj = new Date(item.timestamp);
-        timeLabel.textContent = `${dateObj.toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}`;
+        timeLabel.textContent = dateObj.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
       } else {
         timeLabel.textContent = `Slot #${item.slot}`;
       }
       
-      // Binding Komentar Slot Fisik terkait ke Kartu UI Ini
       CommentModule.renderComments(item.slot, cardDOMIndex);
 
-      // Update Event Listener Input Komentar
       const input = document.getElementById(`input-card-${cardDOMIndex}`);
       const btn = document.getElementById(`btn-send-card-${cardDOMIndex}`);
 
