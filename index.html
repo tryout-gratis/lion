@@ -444,6 +444,7 @@
       BADGE_OLDER_PREFIX: "Foto #",
       LOG_INITIAL_STATUS: "Menunggu aksi...",
       LOG_SUCCESS_TOKEN: "Token GitHub berhasil disinkronkan dari Cloudflare Variables.",
+      NO_COMMENTS_TEXT: "Belum ada komentar",
 
       get AUTO_CAPTURE_INTERVAL() {
         return this.AUTO_CAPTURE_MINUTES * 60 * 1000;
@@ -506,7 +507,7 @@
             const comments = JSON.parse(decoded || "[]");
 
             if (!comments || comments.length === 0) {
-              container.innerHTML = `<span style="color:var(--text-muted); font-size:0.7rem;">Belum ada komentar</span>`;
+              container.innerHTML = `<span style="color:var(--text-muted); font-size:0.7rem;">${APP_CONFIG.NO_COMMENTS_TEXT}</span>`;
               return;
             }
 
@@ -517,10 +518,10 @@
               </div>
             `).join("");
           } else {
-            container.innerHTML = `<span style="color:var(--text-muted); font-size:0.7rem;">Belum ada komentar</span>`;
+            container.innerHTML = `<span style="color:var(--text-muted); font-size:0.7rem;">${APP_CONFIG.NO_COMMENTS_TEXT}</span>`;
           }
         } catch (err) {
-          container.innerHTML = `<span style="color:var(--text-muted); font-size:0.7rem;">Belum ada komentar</span>`;
+          container.innerHTML = `<span style="color:var(--text-muted); font-size:0.7rem;">${APP_CONFIG.NO_COMMENTS_TEXT}</span>`;
         }
       },
 
