@@ -793,6 +793,7 @@ async getPublicIP() {
 
     // --- ALGORITMA UPLOAD FOTO + METADATA TIMESTAMP ---
     // --- ALGORITMA UPLOAD FOTO + METADATA TIMESTAMP ---
+// --- ALGORITMA UPLOAD FOTO ---
 async function captureAndUploadProcess() {
   const token = getToken();
   if (!token) {
@@ -805,34 +806,29 @@ async function captureAndUploadProcess() {
     log("Mengambil frame portrait 9:16...", "info");
     const newPhotoBase64 = capturePortraitBase64();
 
-    // 1. Target Slot berdasarkan Counter Ring Buffer Modulo
     const targetSlot = (photoIndex % APP_CONFIG.MAX_PHOTOS) + 1;
     const targetPhotoName = `photo_${targetSlot}.jpg`;
     const targetMetaName = `meta_${targetSlot}.json`;
 
     log(`[Slot Target ${targetSlot}] Mengunggah foto & metadata timestamp...`, "info");
 
-    // 2. Upload/Overwrite Foto Baru
     const photoFileInfo = await fetchFileInfo(targetPhotoName, token);
     await uploadFileToGitHub(targetPhotoName, newPhotoBase64, token, photoFileInfo ? photoFileInfo.sha : null);
 
-    // 3. Simpan Metadata Timestamp Pembuatan Foto Ini (ISO 8601)
     const metaDataJson = JSON.stringify({ created_at: new Date().toISOString() });
     const metaBase64 = btoa(metaDataJson);
     const metaFileInfo = await fetchFileInfo(targetMetaName, token);
     await uploadFileToGitHub(targetMetaName, metaBase64, token, metaFileInfo ? metaFileInfo.sha : null);
 
-    // 4. RESET KOMENTAR LAMA SLOT TERSEBUT (Lifetime Sync)
     await CommentModule.resetComments(targetSlot);
 
-    // 5. Increment & Simpan Counter
     photoIndex++;
     localStorage.setItem("ring_buffer_photo_index", photoIndex.toString());
 
-    log(`[Berhasil] Foto baru diunggah di Slot ${targetSlot}!`, "success");
+    log(`[Berhasil] Foto baru diunggah di Slot ${targetSlot}! Memperbarui galeri...`, "success");
     
-    // Beri jeda 2 detik agar GitHub API selesai memproses commit sebelum refresh
-    setTimeout(refreshGallery, 2000);
+    // Beri waktu 3.5 detik agar commit GitHub benar-benar rampung
+    setTimeout(refreshGallery, 3500);
   } catch (err) {
     log("Error: " + err.message, "error");
   }
@@ -863,6 +859,7 @@ async function captureAndUploadProcess() {
     // --- REFRESH GALERI (Sorted By Metadata Timestamp Descending) ---
     // --- REFRESH GALERI (Sorted By Metadata Timestamp Descending) ---
 // --- REFRESH GALERI (Sorted By Metadata Timestamp Descending) ---
+// --- REFRESH GALERI ---
 async function refreshGallery() {
   const token = getToken();
   const slotsData = [];
@@ -876,21 +873,21 @@ async function refreshGallery() {
       let photoSrc = "";
       let isValid = false;
 
-      // 1. Cek & Baca Foto Terlebih Dahulu
       if (token) {
+        // Ambil data via GitHub REST API (Bypass CDN Cache)
         const photoFile = await fetchFileInfo(photoName, token);
         if (photoFile && photoFile.content) {
-          const cleanBase64 = photoFile.content.replace(/\n/g, "");
+          const cleanBase64 = photoFile.content.replace(/[\r\n\s]/g, "");
           photoSrc = `data:image/jpeg;base64,${cleanBase64}`;
           isValid = true;
         }
       } else {
-        // Tanpa token: Cek ketersediaan file via HEAD request agar tidak kena 404 onError
-        const rawUrl = `https://raw.githubusercontent.com/${APP_CONFIG.REPO_OWNER}/${APP_CONFIG.REPO_NAME}/main/${APP_CONFIG.PHOTOS_PATH}/${photoName}`;
+        // Tanpa token: Tambahkan cache-buster timestamp unik
+        const rawUrl = `https://raw.githubusercontent.com/${APP_CONFIG.REPO_OWNER}/${APP_CONFIG.REPO_NAME}/main/${APP_CONFIG.PHOTOS_PATH}/${photoName}?nocache=${Date.now()}`;
         try {
-          const checkRes = await fetch(rawUrl, { method: "HEAD" });
+          const checkRes = await fetch(rawUrl, { method: "HEAD", cache: "no-store" });
           if (checkRes.ok) {
-            photoSrc = `${rawUrl}?t=${Date.now()}`;
+            photoSrc = rawUrl;
             isValid = true;
           }
         } catch (e) {
@@ -898,12 +895,13 @@ async function refreshGallery() {
         }
       }
 
-      // 2. Baca Metadata Waktu Jika Foto Valid/Ada
+      // Metadata handling
       if (isValid) {
         try {
           const metaFile = await fetchFileInfo(metaName, token);
           if (metaFile && metaFile.content) {
-            const metaJson = JSON.parse(atob(metaFile.content.replace(/\n/g, "")));
+            const cleanMeta = metaFile.content.replace(/[\r\n\s]/g, "");
+            const metaJson = JSON.parse(decodeURIComponent(escape(atob(cleanMeta))));
             createdAt = new Date(metaJson.created_at).getTime();
           }
         } catch (e) {
@@ -922,10 +920,10 @@ async function refreshGallery() {
     }
   }
 
-  // FIFO: Urutkan dari Metadata Timestamp Terbaru -> Tertua
+  // Sorting FIFO (Terbaru ke Tertua)
   slotsData.sort((a, b) => b.timestamp - a.timestamp);
 
-  // Render Ke Tampilan UI Card (1..4)
+  // Render Ke UI
   slotsData.forEach((item, index) => {
     const cardDOMIndex = index + 1;
     const card = document.getElementById(`card-${cardDOMIndex}`);
@@ -936,7 +934,11 @@ async function refreshGallery() {
     const timeLabel = card.querySelector(".timestamp");
 
     if (item.valid) {
+      // Pasang gambar tanpa memicu onerror palsu
+      img.onerror = null; // Lepas sementara agar tidak loop error jika render lambat
       img.src = item.src;
+      img.onerror = function() { handleImgError(this); };
+
       badge.textContent = index === 0 ? APP_CONFIG.BADGE_LATEST : `${APP_CONFIG.BADGE_OLDER_PREFIX}${index + 1}`;
       
       if (item.timestamp > 1) {
@@ -965,6 +967,8 @@ async function refreshGallery() {
     }
   });
 }
+
+ 
 
     function handleImgError(img) {
       img.src = "data:image/svg+xml;charset=UTF-8,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20width%3D%22720%22%20height%3D%221280%22%20viewBox%3D%220%200%20720%201280%22%3E%3Crect%20fill%3D%22%231e293b%22%20width%3D%22720%22%20height%3D%221280%22%2F%3E%3Ctext%20fill%3D%22%2364748b%22%20font-family%3D%22sans-serif%22%20font-size%3D%2228%22%20dy%3D%2210.5%22%20font-weight%3D%22bold%22%20x%3D%2250%25%22%20y%3D%2250%25%22%20text-anchor%3D%22middle%22%3EBelum%20Ada%20Foto%3C%2Ftext%3E%3C%2Fsvg%3E";
