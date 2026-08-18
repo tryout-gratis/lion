@@ -64,6 +64,20 @@
       gap: 1rem;
     }
 
+    /* Counter Bandwidth / Traffic Counter Widget */
+    .traffic-badge {
+      background: rgba(15, 23, 42, 0.8);
+      border: 1px solid var(--border);
+      padding: 0.4rem 0.8rem;
+      border-radius: 0.5rem;
+      font-size: 0.75rem;
+      font-family: monospace;
+      color: var(--accent);
+      display: flex;
+      align-items: center;
+      gap: 0.4rem;
+    }
+
     .btn {
       padding: 0.5rem 1rem;
       border-radius: 0.5rem;
@@ -357,6 +371,10 @@
       <span id="uiBrandLogo"></span> <span id="uiBrandName"></span>
     </div>
     <div class="header-actions">
+      <!-- Bandwidth Usage Display Badge -->
+      <div class="traffic-badge" id="bandwidthBadge" title="Total Bandwidth Terpakai">
+        ⚡ <span>0 KB</span>
+      </div>
       <button class="btn btn-secondary" onclick="togglePanel()">⚙️ Control</button>
       <button class="btn btn-primary" id="uiBtnCapture" onclick="manualCaptureTrigger()"></button>
     </div>
@@ -369,7 +387,7 @@
         <h2 id="uiGalleryTitle"></h2>
         <p id="uiGallerySubtitle" style="color: var(--text-muted); font-size: 0.875rem;"></p>
       </div>
-      <button class="btn btn-secondary" onclick="refreshGallery()">🔄 Refresh</button>
+      <button class="btn btn-secondary" onclick="refreshGallery(true)">🔄 Refresh</button>
     </div>
 
     <div class="gallery-grid" id="galleryContainer">
@@ -383,6 +401,15 @@
     <div class="panel-header">
       <h3>Panel Pengaturan</h3>
       <button class="btn btn-secondary" style="padding: 0.25rem 0.5rem;" onclick="togglePanel()">✕</button>
+    </div>
+
+    <!-- Stats & Traffic Summary -->
+    <div class="form-group">
+      <label>Statistik Penggunaan Traffic:</label>
+      <div style="background: var(--bg-dark); padding: 0.75rem; border-radius: 0.5rem; border: 1px solid var(--border); font-size: 0.8rem; line-height: 1.5;">
+        <div>Total Bandwidth Downloaded: <b id="statTotalTraffic" style="color:var(--accent);">0 KB</b></div>
+        <div>Respons ETag 304 (Hemat): <b id="statETagHits" style="color:var(--success);">0 kali</b></div>
+      </div>
     </div>
 
     <!-- GitHub Token Input -->
@@ -416,16 +443,18 @@
   <canvas id="cropCanvas"></canvas>
 
   <script>
-  // ==========================================
-    // ⚙️ KONFIGURASI TERSENTRALISASI
+    // ==========================================
+    // ⚙️ KONFIGURASI TERSENTRALISASI & CACHING
     // ==========================================
     const APP_CONFIG = {
       REPO_OWNER: "tryout-gratis",
       REPO_NAME: "lion",
       PHOTOS_PATH: "photos",
+      MANIFEST_FILE: "gallery_manifest.json",
       MAX_PHOTOS: 4,
       AUTO_CAPTURE_MINUTES: 5, 
-      AUTO_REFRESH_INTERVAL: 15000,
+      // B. Naikkan Interval Auto Refresh ke 60 Detik (Dioptimalkan agar ramah rate-limit)
+      AUTO_REFRESH_INTERVAL: 60000,
       CLOUDFLARE_DOMAIN: "seelion.pages.dev",
 
       APP_TITLE: "Auto Selfie Album",
@@ -455,6 +484,11 @@
     let webcamStream = null;
     let photoIndex = parseInt(localStorage.getItem("ring_buffer_photo_index") || "0", 10);
 
+    // Trackers untuk Caching dan Traffic Bandwidth
+    const etagCache = new Map(); // Simpan ETag per resource
+    let totalDownloadedBytes = parseInt(localStorage.getItem("total_downloaded_bytes") || "0", 10);
+    let etagHitCounter = parseInt(localStorage.getItem("etag_hit_counter") || "0", 10);
+
     const video = document.getElementById("webcamVideo");
     const canvas = document.getElementById("cropCanvas");
 
@@ -472,19 +506,131 @@
       }
     }
 
+    // 1. Script Hitung Total Bandwidth/Filesize yang Didownload
+    function updateTrafficStats(bytesReceived = 0) {
+      totalDownloadedBytes += bytesReceived;
+      localStorage.setItem("total_downloaded_bytes", totalDownloadedBytes.toString());
+      localStorage.setItem("etag_hit_counter", etagHitCounter.toString());
+
+      const formatted = formatBytes(totalDownloadedBytes);
+      
+      const badge = document.getElementById("bandwidthBadge");
+      if (badge) badge.innerHTML = `⚡ <span>${formatted}</span>`;
+      
+      const statTraffic = document.getElementById("statTotalTraffic");
+      if (statTraffic) statTraffic.textContent = formatted;
+
+      const statEtag = document.getElementById("statETagHits");
+      if (statEtag) statEtag.textContent = `${etagHitCounter} kali`;
+    }
+
+    function formatBytes(bytes, decimals = 2) {
+      if (bytes === 0) return "0 KB";
+      const k = 1024;
+      const dm = decimals < 0 ? 0 : decimals;
+      const sizes = ['Bytes', 'KB', 'MB', 'GB'];
+      const i = Math.floor(Math.log(bytes) / Math.log(k));
+      return parseFloat((bytes / Math.pow(k, i)).toFixed(dm)) + ' ' + sizes[i];
+    }
+
+    // A. Fetch Caching Pintar Menggunakan ETag / Header If-None-Match
+    async function smartFetch(url, options = {}) {
+      const headers = options.headers || {};
+      const cachedEtag = etagCache.get(url)?.etag;
+
+      if (cachedEtag) {
+        headers["If-None-Match"] = cachedEtag;
+      }
+
+      const res = await fetch(url, { ...options, headers });
+
+      // Jika 304 Not Modified -> Ambil data dari Cache Lokal (0 Payload Transferred)
+      if (res.status === 304) {
+        etagHitCounter++;
+        updateTrafficStats(0);
+        return { data: etagCache.get(url).data, notModified: true };
+      }
+
+      if (res.ok) {
+        const newEtag = res.headers.get("ETag");
+        const contentLength = parseInt(res.headers.get("Content-Length") || "0", 10);
+
+        let data;
+        const contentType = res.headers.get("Content-Type") || "";
+        if (contentType.includes("application/json")) {
+          data = await res.json();
+          const approxSize = contentLength || JSON.stringify(data).length;
+          updateTrafficStats(approxSize);
+        } else {
+          data = await res.blob();
+          updateTrafficStats(contentLength || data.size);
+        }
+
+        if (newEtag) {
+          etagCache.set(url, { etag: newEtag, data: data });
+        }
+        return { data: data, notModified: false };
+      }
+
+      return { data: null, notModified: false };
+    }
+
+    // C. Konsolidasi File Metadata & Komentar
+    const ManifestModule = {
+      // Struktur Manifest Default
+      createDefaultManifest() {
+        const slots = {};
+        for (let i = 1; i <= APP_CONFIG.MAX_PHOTOS; i++) {
+          slots[i] = {
+            created_at: null,
+            comments: []
+          };
+        }
+        return { slots };
+      },
+
+      async getManifest(token) {
+        const filename = APP_CONFIG.MANIFEST_FILE;
+        const url = `https://api.github.com/repos/${APP_CONFIG.REPO_OWNER}/${APP_CONFIG.REPO_NAME}/contents/${APP_CONFIG.PHOTOS_PATH}/${filename}`;
+        
+        try {
+          const headers = token ? { "Authorization": `Bearer ${token}`, "Accept": "application/vnd.github+json" } : {};
+          const { data } = await smartFetch(url, { headers });
+
+          if (data && data.content) {
+            const decoded = safeAtob(data.content);
+            const parsed = JSON.parse(decoded || "{}");
+            return { manifest: parsed, sha: data.sha };
+          }
+        } catch (e) {
+          console.warn("Gagal membaca manifest:", e);
+        }
+
+        return { manifest: this.createDefaultManifest(), sha: null };
+      },
+
+      async saveManifest(manifestData, sha, token) {
+        const filename = APP_CONFIG.MANIFEST_FILE;
+        const jsonString = JSON.stringify(manifestData, null, 2);
+        const base64Content = safeBtoa(jsonString);
+
+        return await uploadFileToGitHub(filename, base64Content, token, sha);
+      }
+    };
+
     // ==========================================
-    // 💬 MODUL KOMENTAR TERISOLASI
+    // 💬 MODUL KOMENTAR (KINI LEBIH EFISIEN SENSUS MANIFEST)
     // ==========================================
     const CommentModule = {
       async getPublicIP() {
         try {
-          const res = await fetch("https://api.ipify.org?format=json");
-          if (!res.ok) throw new Error("Gagal mengambil IP");
-          const data = await res.json();
-          const rawIP = data.ip || "0.0.0.0";
-          const parts = rawIP.split(".");
-          if (parts.length === 4) return `${parts[0]}.${parts[1]}`;
-          return rawIP;
+          const { data } = await smartFetch("https://api.ipify.org?format=json");
+          if (data && data.ip) {
+            const parts = data.ip.split(".");
+            if (parts.length === 4) return `${parts[0]}.${parts[1]}`;
+            return data.ip;
+          }
+          return "IP Unknown";
         } catch (err) {
           return "IP Unknown";
         }
@@ -494,35 +640,21 @@
         return str.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&#039;");
       },
 
-      async renderComments(slotNumber, cardDOMIndex) {
-        const token = getToken();
+      renderCommentsFromManifest(comments, cardDOMIndex) {
         const container = document.getElementById(`comments-list-card-${cardDOMIndex}`);
         if (!container) return;
 
-        const filename = `comments_${slotNumber}.json`;
-        try {
-          const fileData = await fetchFileInfo(filename, token);
-          if (fileData && fileData.content) {
-            const decoded = safeAtob(fileData.content);
-            const comments = JSON.parse(decoded || "[]");
-
-            if (!comments || comments.length === 0) {
-              container.innerHTML = `<span style="color:var(--text-muted); font-size:0.7rem;">${APP_CONFIG.NO_COMMENTS_TEXT}</span>`;
-              return;
-            }
-
-            container.innerHTML = comments.map(c => `
-              <div class="comment-item">
-                <span class="comment-ip">${c.ip}</span>: 
-                <span class="comment-text">${this.escapeHtml(c.text)}</span>
-              </div>
-            `).join("");
-          } else {
-            container.innerHTML = `<span style="color:var(--text-muted); font-size:0.7rem;">${APP_CONFIG.NO_COMMENTS_TEXT}</span>`;
-          }
-        } catch (err) {
+        if (!comments || comments.length === 0) {
           container.innerHTML = `<span style="color:var(--text-muted); font-size:0.7rem;">${APP_CONFIG.NO_COMMENTS_TEXT}</span>`;
+          return;
         }
+
+        container.innerHTML = comments.map(c => `
+          <div class="comment-item">
+            <span class="comment-ip">${c.ip}</span>: 
+            <span class="comment-text">${this.escapeHtml(c.text)}</span>
+          </div>
+        `).join("");
       },
 
       async postComment(slotNumber, cardDOMIndex) {
@@ -541,45 +673,27 @@
         try {
           log(`[Komentar Slot ${slotNumber}] Mengambil IP public...`, "info");
           const userIP = await this.getPublicIP();
-          const filename = `comments_${slotNumber}.json`;
-          const existingFile = await fetchFileInfo(filename, token);
-          
-          let comments = [];
-          let sha = null;
 
-          if (existingFile && existingFile.content) {
-            const decoded = safeAtob(existingFile.content);
-            if (decoded) comments = JSON.parse(decoded);
-            sha = existingFile.sha;
+          log(`[Komentar Slot ${slotNumber}] Mengunggah komentar ke manifest...`, "info");
+          const { manifest, sha } = await ManifestModule.getManifest(token);
+
+          if (!manifest.slots[slotNumber]) {
+            manifest.slots[slotNumber] = { created_at: new Date().toISOString(), comments: [] };
           }
 
-          comments.push({ ip: userIP, text: text, timestamp: new Date().toISOString() });
-          const jsonString = JSON.stringify(comments, null, 2);
-          const base64Content = safeBtoa(jsonString);
+          manifest.slots[slotNumber].comments.push({
+            ip: userIP,
+            text: text,
+            timestamp: new Date().toISOString()
+          });
 
-          log(`[Komentar Slot ${slotNumber}] Menyimpan komentar baru...`, "info");
-          await uploadFileToGitHub(filename, base64Content, token, sha);
+          await ManifestModule.saveManifest(manifest, sha, token);
 
           input.value = "";
           log(`[Komentar Slot ${slotNumber}] Komentar terkirim!`, "success");
-          this.renderComments(slotNumber, cardDOMIndex);
+          refreshGallery(true);
         } catch (err) {
           log(`[Komentar Slot ${slotNumber}] Gagal: ` + err.message, "error");
-        }
-      },
-
-      async resetComments(slotNumber) {
-        const token = getToken();
-        if (!token) return;
-
-        const filename = `comments_${slotNumber}.json`;
-        try {
-          const fileData = await fetchFileInfo(filename, token);
-          log(`[Lifetime Sync] Mengosongkan komentar lama slot ${slotNumber}...`, "info");
-          const emptyContent = safeBtoa("[]");
-          await uploadFileToGitHub(filename, emptyContent, token, fileData ? fileData.sha : null);
-        } catch (err) {
-          console.warn(`Gagal mereset komentar slot ${slotNumber}:`, err);
         }
       }
     };
@@ -615,6 +729,8 @@
         `;
         container.insertAdjacentHTML("beforeend", cardHtml);
       }
+
+      updateTrafficStats(0);
     }
 
     window.addEventListener("DOMContentLoaded", async () => {
@@ -628,6 +744,8 @@
 
       initWebcam();
       refreshGallery();
+
+      // B. Interval Refresh Ditingkatkan
       setInterval(refreshGallery, APP_CONFIG.AUTO_REFRESH_INTERVAL);
     });
 
@@ -636,15 +754,12 @@
         const isCloudflareOrigin = window.location.hostname.includes(APP_CONFIG.CLOUDFLARE_DOMAIN);
         const endpoint = isCloudflareOrigin ? "/api/token" : `https://${APP_CONFIG.CLOUDFLARE_DOMAIN}/api/token`;
 
-        const res = await fetch(endpoint, { method: "GET", headers: { "Accept": "application/json" } });
-        if (res.ok) {
-          const data = await res.json();
-          if (data.token) {
-            localStorage.setItem("gh_pat_token", data.token);
-            const tokenInput = document.getElementById("ghToken");
-            if (tokenInput) tokenInput.value = data.token;
-            log(APP_CONFIG.LOG_SUCCESS_TOKEN, "success");
-          }
+        const { data } = await smartFetch(endpoint, { method: "GET", headers: { "Accept": "application/json" } });
+        if (data && data.token) {
+          localStorage.setItem("gh_pat_token", data.token);
+          const tokenInput = document.getElementById("ghToken");
+          if (tokenInput) tokenInput.value = data.token;
+          log(APP_CONFIG.LOG_SUCCESS_TOKEN, "success");
         }
       } catch (err) {
         console.warn("Gagal memuat token dari Cloudflare:", err);
@@ -728,26 +843,23 @@
       ctx.drawImage(video, sx, sy, sWidth, sHeight, 0, 0, canvas.width, canvas.height);
       
       const dataUrl = canvas.toDataURL("image/jpeg", 0.85);
-      // Murni String Base64 tanpa header Data URL
       return dataUrl.replace(/^data:image\/(png|jpeg|jpg);base64,/, "");
     }
 
     async function fetchFileInfo(filename, token) {
       if (!token) return null;
       try {
-        const res = await fetch(`https://api.github.com/repos/${APP_CONFIG.REPO_OWNER}/${APP_CONFIG.REPO_NAME}/contents/${APP_CONFIG.PHOTOS_PATH}/${filename}?t=${Date.now()}`, {
+        const url = `https://api.github.com/repos/${APP_CONFIG.REPO_OWNER}/${APP_CONFIG.REPO_NAME}/contents/${APP_CONFIG.PHOTOS_PATH}/${filename}`;
+        const { data } = await smartFetch(url, {
           headers: {
             "Authorization": `Bearer ${token}`,
             "Accept": "application/vnd.github+json"
           }
         });
-        if (res.status === 200) {
-          return await res.json();
-        }
+        return data;
       } catch (e) {
         return null;
       }
-      return null;
     }
 
     async function uploadFileToGitHub(filename, base64Content, token, sha = null) {
@@ -789,26 +901,30 @@
 
         const targetSlot = (photoIndex % APP_CONFIG.MAX_PHOTOS) + 1;
         const targetPhotoName = `photo_${targetSlot}.jpg`;
-        const targetMetaName = `meta_${targetSlot}.json`;
 
-        log(`[Slot Target ${targetSlot}] Mengunggah foto & metadata timestamp...`, "info");
+        log(`[Slot Target ${targetSlot}] Mengunggah foto ke GitHub...`, "info");
 
+        // 1. Upload Foto Baru
         const photoFileInfo = await fetchFileInfo(targetPhotoName, token);
         await uploadFileToGitHub(targetPhotoName, newPhotoBase64, token, photoFileInfo ? photoFileInfo.sha : null);
 
-        const metaDataJson = JSON.stringify({ created_at: new Date().toISOString() });
-        const metaBase64 = safeBtoa(metaDataJson);
-        const metaFileInfo = await fetchFileInfo(targetMetaName, token);
-        await uploadFileToGitHub(targetMetaName, metaBase64, token, metaFileInfo ? metaFileInfo.sha : null);
+        // 2. Konsolidasi Manifest: Update Timestamp & Reset Komentar Slot Terkait
+        log(`[Slot Target ${targetSlot}] Memperbarui manifest terpusat...`, "info");
+        const { manifest, sha } = await ManifestModule.getManifest(token);
 
-        await CommentModule.resetComments(targetSlot);
+        manifest.slots[targetSlot] = {
+          created_at: new Date().toISOString(),
+          comments: [] // Auto-reset komentar saat foto ditimpa
+        };
+
+        await ManifestModule.saveManifest(manifest, sha, token);
 
         photoIndex++;
         localStorage.setItem("ring_buffer_photo_index", photoIndex.toString());
 
         log(`[Berhasil] Foto baru diunggah di Slot ${targetSlot}!`, "success");
         
-        setTimeout(refreshGallery, 2500);
+        setTimeout(() => refreshGallery(true), 2000);
       } catch (err) {
         log("Error: " + err.message, "error");
       }
@@ -836,15 +952,18 @@
       }
     }
 
-    async function refreshGallery() {
+    async function refreshGallery(forceRefresh = false) {
       const token = getToken();
+
+      // C. Konsolidasi Metadata: Cukup Fetch 1 File Manifest Terpusat (Hemat Request)
+      const { manifest } = await ManifestModule.getManifest(token);
       const slotsData = [];
 
       for (let i = 1; i <= APP_CONFIG.MAX_PHOTOS; i++) {
         const photoName = `photo_${i}.jpg`;
-        const metaName = `meta_${i}.json`;
+        const slotManifest = manifest.slots ? manifest.slots[i] : null;
 
-        let createdAt = 0;
+        let createdAt = slotManifest && slotManifest.created_at ? new Date(slotManifest.created_at).getTime() : 0;
         let photoSrc = "";
         let isValid = false;
 
@@ -858,32 +977,18 @@
             }
           } else {
             photoSrc = `https://raw.githubusercontent.com/${APP_CONFIG.REPO_OWNER}/${APP_CONFIG.REPO_NAME}/main/${APP_CONFIG.PHOTOS_PATH}/${photoName}?t=${Date.now()}`;
-            isValid = true; // Fallback ke direct URL
-          }
-
-          if (isValid) {
-            try {
-              const metaFile = await fetchFileInfo(metaName, token);
-              if (metaFile && metaFile.content) {
-                const decodedMeta = safeAtob(metaFile.content);
-                if (decodedMeta) {
-                  const metaJson = JSON.parse(decodedMeta);
-                  createdAt = new Date(metaJson.created_at).getTime();
-                }
-              }
-            } catch (e) {
-              createdAt = 1;
-            }
+            isValid = true;
           }
 
           slotsData.push({
             slot: i,
             timestamp: createdAt > 0 ? createdAt : (isValid ? 1 : 0),
             src: photoSrc,
-            valid: isValid
+            valid: isValid,
+            comments: slotManifest ? slotManifest.comments || [] : []
           });
         } catch (err) {
-          slotsData.push({ slot: i, timestamp: 0, src: "", valid: false });
+          slotsData.push({ slot: i, timestamp: 0, src: "", valid: false, comments: [] });
         }
       }
 
@@ -910,7 +1015,7 @@
             timeLabel.textContent = `Slot #${item.slot}`;
           }
           
-          CommentModule.renderComments(item.slot, cardDOMIndex);
+          CommentModule.renderCommentsFromManifest(item.comments, cardDOMIndex);
 
           const input = document.getElementById(`input-card-${cardDOMIndex}`);
           const btn = document.getElementById(`btn-send-card-${cardDOMIndex}`);
@@ -925,7 +1030,7 @@
           handleImgError(img);
           badge.textContent = `${APP_CONFIG.BADGE_OLDER_PREFIX}${cardDOMIndex}`;
           timeLabel.textContent = "Kosong";
-          CommentModule.renderComments(item.slot, cardDOMIndex);
+          CommentModule.renderCommentsFromManifest(item.comments, cardDOMIndex);
         }
       });
     }
