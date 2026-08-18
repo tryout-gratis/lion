@@ -1,0 +1,724 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title id="appTitle">Auto Portrait Memory</title>
+  <style>
+    :root {
+      --bg-dark: #0f172a;
+      --card-bg: #1e293b;
+      --accent: #38bdf8;
+      --accent-hover: #0ea5e9;
+      --text: #f8fafc;
+      --text-muted: #94a3b8;
+      --danger: #ef4444;
+      --success: #22c55e;
+      --border: #334155;
+    }
+
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+    }
+
+    body {
+      background-color: var(--bg-dark);
+      color: var(--text);
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+    }
+
+    header {
+      padding: 1.25rem 2rem;
+      background-color: rgba(30, 41, 59, 0.7);
+      backdrop-filter: blur(10px);
+      border-bottom: 1px solid var(--border);
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      position: sticky;
+      top: 0;
+      z-index: 50;
+    }
+
+    .brand {
+      display: flex;
+      align-items: center;
+      gap: 0.75rem;
+      font-size: 1.25rem;
+      font-weight: 700;
+      color: var(--text);
+    }
+
+    .brand span {
+      color: var(--accent);
+    }
+
+    .header-actions {
+      display: flex;
+      align-items: center;
+      gap: 1rem;
+    }
+
+    .btn {
+      padding: 0.5rem 1rem;
+      border-radius: 0.5rem;
+      font-weight: 600;
+      font-size: 0.875rem;
+      cursor: pointer;
+      border: 1px solid transparent;
+      transition: all 0.2s ease;
+      display: inline-flex;
+      align-items: center;
+      gap: 0.5rem;
+    }
+
+    .btn-primary {
+      background-color: var(--accent);
+      color: var(--bg-dark);
+    }
+
+    .btn-primary:hover {
+      background-color: var(--accent-hover);
+    }
+
+    .btn-secondary {
+      background-color: var(--card-bg);
+      border-color: var(--border);
+      color: var(--text);
+    }
+
+    .btn-secondary:hover {
+      background-color: var(--border);
+    }
+
+    .btn-danger {
+      background-color: var(--danger);
+      color: white;
+    }
+
+    main {
+      flex: 1;
+      padding: 2rem;
+      max-width: 1400px;
+      margin: 0 auto;
+      width: 100%;
+    }
+
+    /* Gallery Grid */
+    .gallery-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 1.5rem;
+    }
+
+    .gallery-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+      gap: 1.5rem;
+    }
+
+    .photo-card {
+      background-color: var(--card-bg);
+      border: 1px solid var(--border);
+      border-radius: 1rem;
+      overflow: hidden;
+      display: flex;
+      flex-direction: column;
+      box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.3);
+      position: relative;
+    }
+
+    /* 9:16 Portrait Aspect Ratio Container */
+    .photo-wrapper {
+      position: relative;
+      width: 100%;
+      padding-top: 177.77%; /* 9:16 aspect ratio */
+      background-color: #0b0f19;
+      overflow: hidden;
+    }
+
+    .photo-wrapper img {
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+      transition: transform 0.3s ease;
+    }
+
+    .photo-card:hover .photo-wrapper img {
+      transform: scale(1.03);
+    }
+
+    .photo-meta {
+      padding: 0.85rem 1rem;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      background: var(--card-bg);
+      font-size: 0.8rem;
+      color: var(--text-muted);
+    }
+
+    .badge {
+      background: rgba(56, 189, 248, 0.1);
+      color: var(--accent);
+      padding: 0.25rem 0.5rem;
+      border-radius: 0.25rem;
+      font-size: 0.75rem;
+      font-weight: 600;
+    }
+
+    /* Control Panel Drawer */
+    .panel-overlay {
+      position: fixed;
+      inset: 0;
+      background: rgba(0, 0, 0, 0.6);
+      backdrop-filter: blur(4px);
+      z-index: 99;
+      opacity: 0;
+      pointer-events: none;
+      transition: opacity 0.3s ease;
+    }
+
+    .panel-overlay.active {
+      opacity: 1;
+      pointer-events: auto;
+    }
+
+    .panel {
+      position: fixed;
+      right: -420px;
+      top: 0;
+      width: 400px;
+      max-width: 90vw;
+      height: 100vh;
+      background-color: var(--card-bg);
+      border-left: 1px solid var(--border);
+      z-index: 100;
+      padding: 2rem;
+      box-shadow: -10px 0 25px rgba(0, 0, 0, 0.5);
+      transition: right 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+      overflow-y: auto;
+      display: flex;
+      flex-direction: column;
+      gap: 1.5rem;
+    }
+
+    .panel.active {
+      right: 0;
+    }
+
+    .panel-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      border-bottom: 1px solid var(--border);
+      padding-bottom: 1rem;
+    }
+
+    .form-group {
+      display: flex;
+      flex-direction: column;
+      gap: 0.5rem;
+    }
+
+    label {
+      font-size: 0.875rem;
+      font-weight: 600;
+      color: var(--text-muted);
+    }
+
+    input[type="password"], input[type="text"] {
+      background-color: var(--bg-dark);
+      border: 1px solid var(--border);
+      border-radius: 0.5rem;
+      padding: 0.6rem 0.75rem;
+      color: var(--text);
+      outline: none;
+    }
+
+    input:focus {
+      border-color: var(--accent);
+    }
+
+    .video-preview-wrapper {
+      position: relative;
+      width: 100%;
+      border-radius: 0.5rem;
+      overflow: hidden;
+      background: #000;
+      border: 1px solid var(--border);
+      padding-top: 133.33%; /* 3:4 preview */
+    }
+
+    #webcamVideo {
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+    }
+
+    #cropCanvas {
+      display: none;
+    }
+
+    .status-box {
+      font-size: 0.8rem;
+      padding: 0.75rem;
+      border-radius: 0.5rem;
+      background-color: var(--bg-dark);
+      border: 1px solid var(--border);
+      min-height: 50px;
+      max-height: 120px;
+      overflow-y: auto;
+      font-family: monospace;
+      color: var(--text-muted);
+    }
+
+    .status-box .log-success { color: var(--success); }
+    .status-box .log-error { color: var(--danger); }
+    .status-box .log-info { color: var(--accent); }
+  </style>
+</head>
+<body>
+
+  <!-- Header -->
+  <header>
+    <div class="brand">
+      <span id="uiBrandLogo"></span> <span id="uiBrandName"></span>
+    </div>
+    <div class="header-actions">
+      <button class="btn btn-secondary" onclick="togglePanel()">⚙️ Control</button>
+      <button class="btn btn-primary" id="uiBtnCapture" onclick="manualCaptureTrigger()"></button>
+    </div>
+  </header>
+
+  <!-- Gallery Main Content -->
+  <main>
+    <div class="gallery-header">
+      <div>
+        <h2 id="uiGalleryTitle"></h2>
+        <p id="uiGallerySubtitle" style="color: var(--text-muted); font-size: 0.875rem;"></p>
+      </div>
+      <button class="btn btn-secondary" onclick="refreshGallery()">🔄 Refresh</button>
+    </div>
+
+    <div class="gallery-grid" id="galleryContainer">
+      <!-- Cards di-render secara dinamis oleh JS berdasarkan MAX_PHOTOS -->
+    </div>
+  </main>
+
+  <!-- Side Control Panel -->
+  <div class="panel-overlay" id="panelOverlay" onclick="togglePanel()"></div>
+  <div class="panel" id="controlPanel">
+    <div class="panel-header">
+      <h3>Panel Pengaturan</h3>
+      <button class="btn btn-secondary" style="padding: 0.25rem 0.5rem;" onclick="togglePanel()">✕</button>
+    </div>
+
+    <!-- GitHub Token Input -->
+    <div class="form-group">
+      <label for="ghToken">GitHub Personal Access Token (PAT):</label>
+      <input type="password" id="ghToken" placeholder="Otomatis dari Cloudflare / Input manual" />
+      <button class="btn btn-secondary" style="margin-top: 0.25rem;" onclick="saveToken()">Simpan Token Manual</button>
+    </div>
+
+    <!-- Live Webcam Preview -->
+    <div class="form-group">
+      <label>Preview Webcam (Crop 9:16 Portrait):</label>
+      <div class="video-preview-wrapper">
+        <video id="webcamVideo" autoplay playsinline muted></video>
+      </div>
+    </div>
+
+    <!-- Capture Automation Controls -->
+    <div class="form-group" style="gap: 0.75rem;">
+      <button class="btn btn-primary" id="btnToggleTimer" onclick="toggleAutoCapture()"></button>
+      <button class="btn btn-secondary" onclick="captureAndUploadProcess()">📸 Ambil & Upload Sekarang</button>
+    </div>
+
+    <!-- Logs / Status -->
+    <div class="form-group">
+      <label>Status & Log Eksekusi:</label>
+      <div class="status-box" id="logBox"></div>
+    </div>
+  </div>
+
+  <canvas id="cropCanvas"></canvas>
+
+  <script>
+    // ==========================================
+    // ⚙️ KONFIGURASI TERSENTRALISASI (CUSTOMIZABLE)
+    // ==========================================
+    const APP_CONFIG = {
+      REPO_OWNER: "tryout-gratis",
+      REPO_NAME: "lion",
+      PHOTOS_PATH: "photos",
+      MAX_PHOTOS: 4,
+      AUTO_CAPTURE_MINUTES: 5, 
+      AUTO_REFRESH_INTERVAL: 15000,
+      CLOUDFLARE_DOMAIN: "seelion.pages.dev",
+
+      APP_TITLE: "Auto Portrait Memory",
+      BRAND_NAME: "Couple",
+      BRAND_LOGO: "🦁",
+      GALLERY_TITLE: "4 Foto Terkini",
+      GALLERY_SUBTITLE: "Difoto oleh camera laptop",
+      BTN_CAPTURE_TEXT: "📸 Capture (Alt+C)",
+      
+      get BTN_AUTO_CAPTURE_START() {
+        return `▶ Mulai Auto-Capture (${this.AUTO_CAPTURE_MINUTES} Menit)`;
+      },
+      BTN_AUTO_CAPTURE_STOP: "⏹ Stop Auto-Capture",
+
+      BADGE_LATEST: "Terbaru #1",
+      BADGE_OLDER_PREFIX: "Foto #",
+      LOG_INITIAL_STATUS: "Menunggu aksi...",
+      LOG_SUCCESS_TOKEN: "Token GitHub berhasil disinkronkan dari Cloudflare Variables.",
+
+      get AUTO_CAPTURE_INTERVAL() {
+        return this.AUTO_CAPTURE_MINUTES * 60 * 1000;
+      }
+    };
+
+    let autoCaptureTimer = null;
+    let webcamStream = null;
+    
+    // Counter Global untuk Ring-Buffer (Index Modulo)
+    let photoIndex = parseInt(localStorage.getItem("ring_buffer_photo_index") || "0", 10);
+
+    const video = document.getElementById("webcamVideo");
+    const canvas = document.getElementById("cropCanvas");
+
+    // --- INISIALISASI DOM & TAMPILAN ---
+    function initUI() {
+      document.title = APP_CONFIG.APP_TITLE;
+
+      document.getElementById("uiBrandLogo").textContent = APP_CONFIG.BRAND_LOGO;
+      document.getElementById("uiBrandName").textContent = APP_CONFIG.BRAND_NAME;
+      document.getElementById("uiBtnCapture").textContent = APP_CONFIG.BTN_CAPTURE_TEXT;
+      document.getElementById("uiGalleryTitle").textContent = APP_CONFIG.GALLERY_TITLE;
+      document.getElementById("uiGallerySubtitle").textContent = APP_CONFIG.GALLERY_SUBTITLE;
+      document.getElementById("btnToggleTimer").textContent = APP_CONFIG.BTN_AUTO_CAPTURE_START;
+      document.getElementById("logBox").textContent = APP_CONFIG.LOG_INITIAL_STATUS;
+
+      const container = document.getElementById("galleryContainer");
+      container.innerHTML = "";
+      for (let i = 1; i <= APP_CONFIG.MAX_PHOTOS; i++) {
+        const cardHtml = `
+          <div class="photo-card" id="card-${i}">
+            <div class="photo-wrapper"><img src="" alt="Photo Slot ${i}" onerror="handleImgError(this)" /></div>
+            <div class="photo-meta"><span class="badge">-</span><span class="timestamp">-</span></div>
+          </div>
+        `;
+        container.insertAdjacentHTML("beforeend", cardHtml);
+      }
+    }
+
+    // --- INISIALISASI APLIKASI ---
+    window.addEventListener("DOMContentLoaded", async () => {
+      initUI();
+
+      await loadTokenFromCloudflare();
+
+      const savedToken = localStorage.getItem("gh_pat_token");
+      if (savedToken) {
+        document.getElementById("ghToken").value = savedToken;
+      }
+
+      initWebcam();
+      refreshGallery();
+      setInterval(refreshGallery, APP_CONFIG.AUTO_REFRESH_INTERVAL);
+    });
+
+    async function loadTokenFromCloudflare() {
+      try {
+        const isCloudflareOrigin = window.location.hostname.includes(APP_CONFIG.CLOUDFLARE_DOMAIN);
+        const endpoint = isCloudflareOrigin ? "/api/token" : `https://${APP_CONFIG.CLOUDFLARE_DOMAIN}/api/token`;
+
+        const res = await fetch(endpoint, {
+          method: "GET",
+          headers: { "Accept": "application/json" }
+        });
+
+        if (res.ok) {
+          const data = await res.json();
+          if (data.token) {
+            localStorage.setItem("gh_pat_token", data.token);
+            const tokenInput = document.getElementById("ghToken");
+            if (tokenInput) tokenInput.value = data.token;
+            log(APP_CONFIG.LOG_SUCCESS_TOKEN, "success");
+          }
+        }
+      } catch (err) {
+        console.warn("Gagal memuat token dari Cloudflare (akan memakai localStorage jika ada):", err);
+      }
+    }
+
+    window.addEventListener("keydown", (e) => {
+      if (e.altKey && (e.key === "c" || e.key === "C")) {
+        e.preventDefault();
+        manualCaptureTrigger();
+      }
+    });
+
+    function log(msg, type = "info") {
+      const logBox = document.getElementById("logBox");
+      const time = new Date().toLocaleTimeString();
+      const div = document.createElement("div");
+      div.className = `log-${type}`;
+      div.innerText = `[${time}] ${msg}`;
+      logBox.prepend(div);
+    }
+
+    function togglePanel() {
+      document.getElementById("controlPanel").classList.toggle("active");
+      document.getElementById("panelOverlay").classList.toggle("active");
+    }
+
+    function saveToken() {
+      const token = document.getElementById("ghToken").value.trim();
+      if (!token) {
+        alert("Masukkan token yang valid!");
+        return;
+      }
+      localStorage.setItem("gh_pat_token", token);
+      log("Token GitHub disimpan secara manual.", "success");
+    }
+
+    function getToken() {
+      return localStorage.getItem("gh_pat_token") || document.getElementById("ghToken").value.trim();
+    }
+
+    // --- AKSES WEBCAM & PORTRAIT CROP ---
+    async function initWebcam() {
+      try {
+        webcamStream = await navigator.mediaDevices.getUserMedia({
+          video: { width: { ideal: 1920 }, height: { ideal: 1080 } },
+          audio: false
+        });
+        video.srcObject = webcamStream;
+        log("Webcam berhasil diakses.", "success");
+      } catch (err) {
+        log("Gagal mengakses webcam: " + err.message, "error");
+      }
+    }
+
+    function capturePortraitBase64() {
+      const vWidth = video.videoWidth;
+      const vHeight = video.videoHeight;
+
+      if (!vWidth || !vHeight) {
+        throw new Error("Frame webcam belum siap.");
+      }
+
+      const targetRatio = 9 / 16;
+      let sWidth, sHeight, sx, sy;
+
+      if (vWidth / vHeight > targetRatio) {
+        sHeight = vHeight;
+        sWidth = vHeight * targetRatio;
+        sx = (vWidth - sWidth) / 2;
+        sy = 0;
+      } else {
+        sWidth = vWidth;
+        sHeight = vWidth / targetRatio;
+        sx = 0;
+        sy = (vHeight - sHeight) / 2;
+      }
+
+      canvas.width = 720;
+      canvas.height = 1280;
+      const ctx = canvas.getContext("2d");
+      ctx.drawImage(video, sx, sy, sWidth, sHeight, 0, 0, canvas.width, canvas.height);
+      
+      const dataUrl = canvas.toDataURL("image/jpeg", 0.85);
+      return dataUrl.split(",")[1];
+    }
+
+    // --- GITHUB REST API HELPER ---
+    async function fetchFileInfo(filename, token) {
+      const res = await fetch(`https://api.github.com/repos/${APP_CONFIG.REPO_OWNER}/${APP_CONFIG.REPO_NAME}/contents/${APP_CONFIG.PHOTOS_PATH}/${filename}`, {
+        headers: {
+          "Authorization": `Bearer ${token}`,
+          "Accept": "application/vnd.github+json"
+        }
+      });
+      if (res.status === 200) {
+        return await res.json();
+      }
+      return null;
+    }
+
+    async function uploadFileToGitHub(filename, base64Content, token, sha = null) {
+      const url = `https://api.github.com/repos/${APP_CONFIG.REPO_OWNER}/${APP_CONFIG.REPO_NAME}/contents/${APP_CONFIG.PHOTOS_PATH}/${filename}`;
+      const payload = {
+        message: `Auto-update ${filename} [skip ci]`,
+        content: base64Content
+      };
+      if (sha) payload.sha = sha;
+
+      const res = await fetch(url, {
+        method: "PUT",
+        headers: {
+          "Authorization": `Bearer ${token}`,
+          "Content-Type": "application/json",
+          "Accept": "application/vnd.github+json"
+        },
+        body: JSON.stringify(payload)
+      });
+
+      if (!res.ok) {
+        const err = await res.json();
+        throw new Error(err.message || "Gagal upload ke GitHub");
+      }
+      return await res.json();
+    }
+
+    // --- ALGORITMA RING-BUFFER / INDEX MODULO O(1) ---
+    async function captureAndUploadProcess() {
+      const token = getToken();
+      if (!token) {
+        log("Token GitHub tidak ditemukan! Atur di Cloudflare Variables atau masukkan manual.", "error");
+        togglePanel();
+        return;
+      }
+
+      try {
+        log("Mengambil frame portrait 9:16...", "info");
+        const newPhotoBase64 = capturePortraitBase64();
+
+        // 1. Hitung Slot Target Menggunakan Algoritma Ring-Buffer Modulo
+        const targetSlot = (photoIndex % APP_CONFIG.MAX_PHOTOS) + 1;
+        const targetFilename = `photo_${targetSlot}.jpg`;
+
+        log(`[Ring-Buffer O(1)] Menyiapkan upload ke slot: ${targetFilename}...`, "info");
+
+        // 2. Cek SHA file existing HANYA untuk slot target ini saja (1 Request Read)
+        const fileInfo = await fetchFileInfo(targetFilename, token);
+        const existingSha = fileInfo ? fileInfo.sha : null;
+
+        // 3. Upload/Overwrite Foto Baru Langsung Ke Slot Target (1 Request Write)
+        await uploadFileToGitHub(targetFilename, newPhotoBase64, token, existingSha);
+
+        // 4. Increment & Simpan Counter
+        photoIndex++;
+        localStorage.setItem("ring_buffer_photo_index", photoIndex.toString());
+
+        log(`[Ring-Buffer O(1)] Berhasil unggah ke ${targetFilename}! (1 Request Upload)`, "success");
+        setTimeout(refreshGallery, 1000);
+      } catch (err) {
+        log("Error: " + err.message, "error");
+      }
+    }
+
+    function manualCaptureTrigger() {
+      log("Pemicu instan diaktifkan (Alt+C / Tombol)", "info");
+      captureAndUploadProcess();
+    }
+
+    function toggleAutoCapture() {
+      const btn = document.getElementById("btnToggleTimer");
+      if (autoCaptureTimer) {
+        clearInterval(autoCaptureTimer);
+        autoCaptureTimer = null;
+        btn.textContent = APP_CONFIG.BTN_AUTO_CAPTURE_START;
+        btn.className = "btn btn-primary";
+        log("Auto-capture dihentikan.", "info");
+      } else {
+        autoCaptureTimer = setInterval(captureAndUploadProcess, APP_CONFIG.AUTO_CAPTURE_INTERVAL);
+        btn.textContent = APP_CONFIG.BTN_AUTO_CAPTURE_STOP;
+        btn.className = "btn btn-danger";
+        log(`Auto-capture aktif (interval ${APP_CONFIG.AUTO_CAPTURE_MINUTES} menit).`, "success");
+        captureAndUploadProcess();
+      }
+    }
+
+    // --- TAMPILAN & AUTO REFRESH GALERI (Sorted by Last Modified) ---
+    async function refreshGallery() {
+      const token = getToken();
+      const photosData = [];
+
+      // Fetch metadata/content dari seluruh 4 slot
+      for (let i = 1; i <= APP_CONFIG.MAX_PHOTOS; i++) {
+        const filename = `photo_${i}.jpg`;
+        try {
+          if (token) {
+            const fileData = await fetchFileInfo(filename, token);
+            if (fileData && fileData.content) {
+              const cleanBase64 = fileData.content.replace(/\n/g, "");
+              // Coba dapatkan timestamp commit / fallback ke waktu sekarang
+              const lastModified = fileData.sha ? parseInt(fileData.sha.substring(0, 8), 16) : Date.now();
+              photosData.push({
+                slot: i,
+                src: `data:image/jpeg;base64,${cleanBase64}`,
+                time: lastModified,
+                valid: true
+              });
+            } else {
+              photosData.push({ slot: i, valid: false });
+            }
+          } else {
+            const timestamp = Date.now();
+            photosData.push({
+              slot: i,
+              src: `https://raw.githubusercontent.com/${APP_CONFIG.REPO_OWNER}/${APP_CONFIG.REPO_NAME}/main/${APP_CONFIG.PHOTOS_PATH}/${filename}?t=${timestamp}`,
+              time: timestamp,
+              valid: true
+            });
+          }
+        } catch (err) {
+          photosData.push({ slot: i, valid: false });
+        }
+      }
+
+      // Urutkan foto: yang valid di depan, diurutkan dari yang terbaru di-update
+      // Catatan: Karena kita memakai Ring-Buffer, slot paling baru ditentukan oleh counter photoIndex - 1
+      const latestSlot = photoIndex > 0 ? ((photoIndex - 1) % APP_CONFIG.MAX_PHOTOS) + 1 : 1;
+      
+      photosData.sort((a, b) => {
+        if (!a.valid) return 1;
+        if (!b.valid) return -1;
+        // Hitung jarak rotasi dari slot terbaru
+        const distA = (latestSlot - a.slot + APP_CONFIG.MAX_PHOTOS) % APP_CONFIG.MAX_PHOTOS;
+        const distB = (latestSlot - b.slot + APP_CONFIG.MAX_PHOTOS) % APP_CONFIG.MAX_PHOTOS;
+        return distA - distB;
+      });
+
+      // Render ke Kartu UI
+      photosData.forEach((item, index) => {
+        const card = document.getElementById(`card-${index + 1}`);
+        if (!card) return;
+        
+        const img = card.querySelector("img");
+        const badge = card.querySelector(".badge");
+        const timeLabel = card.querySelector(".timestamp");
+
+        if (item.valid) {
+          img.src = item.src;
+          badge.textContent = index === 0 ? APP_CONFIG.BADGE_LATEST : `${APP_CONFIG.BADGE_OLDER_PREFIX}${index + 1}`;
+          timeLabel.textContent = `Slot #${item.slot}`;
+        } else {
+          handleImgError(img);
+          badge.textContent = `${APP_CONFIG.BADGE_OLDER_PREFIX}${index + 1}`;
+          timeLabel.textContent = "Kosong";
+        }
+      });
+    }
+
+    function handleImgError(img) {
+      img.src = "data:image/svg+xml;charset=UTF-8,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20width%3D%22720%22%20height%3D%221280%22%20viewBox%3D%220%200%20720%201280%22%3E%3Crect%20fill%3D%22%231e293b%22%20width%3D%22720%22%20height%3D%221280%22%2F%3E%3Ctext%20fill%3D%22%2364748b%22%20font-family%3D%22sans-serif%22%20font-size%3D%2228%22%20dy%3D%2210.5%22%20font-weight%3D%22bold%22%20x%3D%2250%25%22%20y%3D%2250%25%22%20text-anchor%3D%22middle%22%3EBelum%20Ada%20Foto%3C%2Ftext%3E%3C%2Fsvg%3E";
+    }
+  </script>
+</body>
+</html>
