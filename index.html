@@ -119,7 +119,7 @@
 
     .gallery-grid {
       display: grid;
-      grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+      grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
       gap: 1.5rem;
     }
 
@@ -165,6 +165,7 @@
       background: var(--card-bg);
       font-size: 0.8rem;
       color: var(--text-muted);
+      border-bottom: 1px solid var(--border);
     }
 
     .badge {
@@ -174,6 +175,55 @@
       border-radius: 0.25rem;
       font-size: 0.75rem;
       font-weight: 600;
+    }
+
+    /* Comment Section Modular Styles */
+    .comment-section {
+      padding: 0.85rem 1rem;
+      background-color: rgba(15, 23, 42, 0.5);
+      display: flex;
+      flex-direction: column;
+      gap: 0.75rem;
+    }
+
+    .comment-list {
+      max-height: 120px;
+      overflow-y: auto;
+      display: flex;
+      flex-direction: column;
+      gap: 0.5rem;
+    }
+
+    .comment-item {
+      background-color: var(--bg-dark);
+      border: 1px solid var(--border);
+      padding: 0.4rem 0.6rem;
+      border-radius: 0.375rem;
+      font-size: 0.75rem;
+      line-height: 1.3;
+      word-break: break-word;
+    }
+
+    .comment-ip {
+      color: var(--accent);
+      font-weight: 700;
+      font-family: monospace;
+      font-size: 0.7rem;
+    }
+
+    .comment-text {
+      color: var(--text);
+    }
+
+    .comment-input-group {
+      display: flex;
+      gap: 0.5rem;
+    }
+
+    .comment-input-group input {
+      flex: 1;
+      font-size: 0.75rem;
+      padding: 0.4rem 0.6rem;
     }
 
     /* Control Panel Drawer */
@@ -373,7 +423,7 @@
       BRAND_NAME: "Couple",
       BRAND_LOGO: "🦁",
       GALLERY_TITLE: "4 Foto Terkini",
-      GALLERY_SUBTITLE: "Difoto oleh camera laptop",
+      GALLERY_SUBTITLE: "Front Cam",
       BTN_CAPTURE_TEXT: "📸 Capture (Alt+C)",
       
       get BTN_AUTO_CAPTURE_START() {
@@ -400,6 +450,132 @@
     const video = document.getElementById("webcamVideo");
     const canvas = document.getElementById("cropCanvas");
 
+    // ==========================================
+    // 💬 MODUL KOMENTAR TERISOLASI (MODULAR)
+    // ==========================================
+    const CommentModule = {
+      // 1. Ambil IP Public Viewer dari Ipify
+      async getPublicIP() {
+        try {
+          const res = await fetch("https://api.ipify.org?format=json");
+          if (!res.ok) throw new Error("Gagal mengambil IP");
+          const data = await res.json();
+          return data.ip || "0.0.0.0";
+        } catch (err) {
+          return "IP Unknown";
+        }
+      },
+
+      // 2. Format Sanitasi HTMLXSS
+      escapeHtml(str) {
+        return str
+          .replace(/&/g, "&amp;")
+          .replace(/</g, "&lt;")
+          .replace(/>/g, "&gt;")
+          .replace(/"/g, "&quot;")
+          .replace(/'/g, "&#039;");
+      },
+
+      // 3. Render/Fetch Komentar untuk Slot Tertentu
+      async renderComments(slotNumber) {
+        const token = getToken();
+        const container = document.getElementById(`comments-list-slot-${slotNumber}`);
+        if (!container) return;
+
+        const filename = `comments_${slotNumber}.json`;
+        try {
+          const fileData = await fetchFileInfo(filename, token);
+          if (fileData && fileData.content) {
+            const jsonString = atob(fileData.content.replace(/\n/g, ""));
+            const comments = JSON.parse(jsonString);
+
+            if (comments.length === 0) {
+              container.innerHTML = `<span style="color:var(--text-muted); font-size:0.7rem;">Belum ada komentar</span>`;
+              return;
+            }
+
+            container.innerHTML = comments.map(c => `
+              <div class="comment-item">
+                <span class="comment-ip">${c.ip}</span>: 
+                <span class="comment-text">${this.escapeHtml(c.text)}</span>
+              </div>
+            `).join("");
+          } else {
+            container.innerHTML = `<span style="color:var(--text-muted); font-size:0.7rem;">Belum ada komentar</span>`;
+          }
+        } catch (err) {
+          container.innerHTML = `<span style="color:var(--text-muted); font-size:0.7rem;">Belum ada komentar</span>`;
+        }
+      },
+
+      // 4. Posting Komentar Baru
+      async postComment(slotNumber) {
+        const token = getToken();
+        const input = document.getElementById(`input-slot-${slotNumber}`);
+        const text = input.value.trim();
+
+        if (!text) return;
+        if (!token) {
+          log("Token GitHub dibutuhkan untuk menyimpan komentar!", "error");
+          togglePanel();
+          return;
+        }
+
+        try {
+          log(`[Komentar Slot ${slotNumber}] Mengambil IP public...`, "info");
+          const userIP = await this.getPublicIP();
+
+          const filename = `comments_${slotNumber}.json`;
+          const existingFile = await fetchFileInfo(filename, token);
+          
+          let comments = [];
+          let sha = null;
+
+          if (existingFile && existingFile.content) {
+            comments = JSON.parse(atob(existingFile.content.replace(/\n/g, "")));
+            sha = existingFile.sha;
+          }
+
+          comments.push({
+            ip: userIP,
+            text: text,
+            timestamp: new Date().toISOString()
+          });
+
+          // Convert UTF-8 to Base64 safely
+          const jsonString = JSON.stringify(comments, null, 2);
+          const base64Content = btoa(unescape(encodeURIComponent(jsonString)));
+
+          log(`[Komentar Slot ${slotNumber}] Menyimpan komentar baru...`, "info");
+          await uploadFileToGitHub(filename, base64Content, token, sha);
+
+          input.value = "";
+          log(`[Komentar Slot ${slotNumber}] Komentar terkirim!`, "success");
+          this.renderComments(slotNumber);
+        } catch (err) {
+          log(`[Komentar Slot ${slotNumber}] Gagal: ` + err.message, "error");
+        }
+      },
+
+      // 5. Reset File Komentar (Lifetime Sync Saat Foto Ditimpa)
+      async resetComments(slotNumber) {
+        const token = getToken();
+        if (!token) return;
+
+        const filename = `comments_${slotNumber}.json`;
+        try {
+          const fileData = await fetchFileInfo(filename, token);
+          if (fileData) {
+            log(`[Lifetime Sync] Mengosongkan komentar lama slot ${slotNumber}...`, "info");
+            const emptyContent = btoa("[]");
+            await uploadFileToGitHub(filename, emptyContent, token, fileData.sha);
+          }
+        } catch (err) {
+          console.warn(`Gagal mereset komentar slot ${slotNumber}:`, err);
+        }
+      }
+    };
+
     // --- INISIALISASI DOM & TAMPILAN ---
     function initUI() {
       document.title = APP_CONFIG.APP_TITLE;
@@ -419,6 +595,17 @@
           <div class="photo-card" id="card-${i}">
             <div class="photo-wrapper"><img src="" alt="Photo Slot ${i}" onerror="handleImgError(this)" /></div>
             <div class="photo-meta"><span class="badge">-</span><span class="timestamp">-</span></div>
+            
+            <!-- Section Komentar Modular -->
+            <div class="comment-section">
+              <div class="comment-list" id="comments-list-slot-${i}">
+                <span style="color:var(--text-muted); font-size:0.7rem;">Memuat komentar...</span>
+              </div>
+              <div class="comment-input-group">
+                <input type="text" id="input-slot-${i}" placeholder="Tulis komentar..." onkeydown="if(event.key==='Enter') CommentModule.postComment(${i})" />
+                <button class="btn btn-primary" style="padding: 0.25rem 0.5rem; font-size: 0.75rem;" onclick="CommentModule.postComment(${i})">Kirim</button>
+              </div>
+            </div>
           </div>
         `;
         container.insertAdjacentHTML("beforeend", cardHtml);
@@ -604,18 +791,21 @@
 
         log(`[Ring-Buffer O(1)] Menyiapkan upload ke slot: ${targetFilename}...`, "info");
 
-        // 2. Cek SHA file existing HANYA untuk slot target ini saja (1 Request Read)
+        // 2. Cek SHA file existing HANYA untuk slot target ini saja
         const fileInfo = await fetchFileInfo(targetFilename, token);
         const existingSha = fileInfo ? fileInfo.sha : null;
 
-        // 3. Upload/Overwrite Foto Baru Langsung Ke Slot Target (1 Request Write)
+        // 3. Upload/Overwrite Foto Baru Langsung Ke Slot Target
         await uploadFileToGitHub(targetFilename, newPhotoBase64, token, existingSha);
 
-        // 4. Increment & Simpan Counter
+        // 4. RESET KOMENTAR LAMA SLOT TERSEBUT (Lifetime Sync)
+        await CommentModule.resetComments(targetSlot);
+
+        // 5. Increment & Simpan Counter
         photoIndex++;
         localStorage.setItem("ring_buffer_photo_index", photoIndex.toString());
 
-        log(`[Ring-Buffer O(1)] Berhasil unggah ke ${targetFilename}! (1 Request Upload)`, "success");
+        log(`[Ring-Buffer O(1)] Berhasil unggah ke ${targetFilename}!`, "success");
         setTimeout(refreshGallery, 1000);
       } catch (err) {
         log("Error: " + err.message, "error");
@@ -644,12 +834,11 @@
       }
     }
 
-    // --- TAMPILAN & AUTO REFRESH GALERI (Sorted by Last Modified) ---
+    // --- TAMPILAN & AUTO REFRESH GALERI (Sorted by Ring-Buffer Order) ---
     async function refreshGallery() {
       const token = getToken();
       const photosData = [];
 
-      // Fetch metadata/content dari seluruh 4 slot
       for (let i = 1; i <= APP_CONFIG.MAX_PHOTOS; i++) {
         const filename = `photo_${i}.jpg`;
         try {
@@ -657,12 +846,9 @@
             const fileData = await fetchFileInfo(filename, token);
             if (fileData && fileData.content) {
               const cleanBase64 = fileData.content.replace(/\n/g, "");
-              // Coba dapatkan timestamp commit / fallback ke waktu sekarang
-              const lastModified = fileData.sha ? parseInt(fileData.sha.substring(0, 8), 16) : Date.now();
               photosData.push({
                 slot: i,
                 src: `data:image/jpeg;base64,${cleanBase64}`,
-                time: lastModified,
                 valid: true
               });
             } else {
@@ -673,7 +859,6 @@
             photosData.push({
               slot: i,
               src: `https://raw.githubusercontent.com/${APP_CONFIG.REPO_OWNER}/${APP_CONFIG.REPO_NAME}/main/${APP_CONFIG.PHOTOS_PATH}/${filename}?t=${timestamp}`,
-              time: timestamp,
               valid: true
             });
           }
@@ -682,20 +867,18 @@
         }
       }
 
-      // Urutkan foto: yang valid di depan, diurutkan dari yang terbaru di-update
-      // Catatan: Karena kita memakai Ring-Buffer, slot paling baru ditentukan oleh counter photoIndex - 1
+      // Hitung slot paling baru dari Ring Buffer Counter
       const latestSlot = photoIndex > 0 ? ((photoIndex - 1) % APP_CONFIG.MAX_PHOTOS) + 1 : 1;
       
       photosData.sort((a, b) => {
         if (!a.valid) return 1;
         if (!b.valid) return -1;
-        // Hitung jarak rotasi dari slot terbaru
         const distA = (latestSlot - a.slot + APP_CONFIG.MAX_PHOTOS) % APP_CONFIG.MAX_PHOTOS;
         const distB = (latestSlot - b.slot + APP_CONFIG.MAX_PHOTOS) % APP_CONFIG.MAX_PHOTOS;
         return distA - distB;
       });
 
-      // Render ke Kartu UI
+      // Render ke Kartu UI & Muat Komentar
       photosData.forEach((item, index) => {
         const card = document.getElementById(`card-${index + 1}`);
         if (!card) return;
@@ -708,6 +891,9 @@
           img.src = item.src;
           badge.textContent = index === 0 ? APP_CONFIG.BADGE_LATEST : `${APP_CONFIG.BADGE_OLDER_PREFIX}${index + 1}`;
           timeLabel.textContent = `Slot #${item.slot}`;
+          
+          // Render komentar untuk slot foto terkait
+          CommentModule.renderComments(item.slot);
         } else {
           handleImgError(img);
           badge.textContent = `${APP_CONFIG.BADGE_OLDER_PREFIX}${index + 1}`;
