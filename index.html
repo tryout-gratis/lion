@@ -853,7 +853,7 @@
       return await res.json();
     }
 
-    async function captureAndUploadProcess() {
+ async function captureAndUploadProcess() {
   const token = getToken();
   if (!token) {
     log("Token Cloudflare belum siap!", "error");
@@ -875,15 +875,10 @@
     log(`[Slot Target ${targetSlot}] Memperbarui manifest...`, "info");
     const { manifest, sha } = await ManifestModule.getManifest(token);
 
-    // Pertahankan komentar lama jika slot tersebut sudah ada sebelumnya,
-    // atau gunakan array kosong [] HANYA jika slot tersebut benar-benar belum pernah dibuat.
-    const existingComments = (manifest.slots && manifest.slots[targetSlot] && manifest.slots[targetSlot].comments) 
-      ? manifest.slots[targetSlot].comments 
-      : [];
-
+    // Direset ke [] karena ini adalah FOTO BARU yang menimpa slot tersebut
     manifest.slots[targetSlot] = {
       created_at: new Date().toISOString(),
-      comments: existingComments // <-- Komentar tetap dipertahankan meski foto diperbarui
+      comments: [] 
     };
 
     await ManifestModule.saveManifest(manifest, sha, token);
