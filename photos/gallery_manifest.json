@@ -1,0 +1,26 @@
+{
+  "slots": {
+    "1": {
+      "created_at": null,
+      "comments": [
+        {
+          "ip": "157.85",
+          "text": "hp ku",
+          "timestamp": "2026-08-19T00:07:49.731Z"
+        }
+      ]
+    },
+    "2": {
+      "created_at": null,
+      "comments": []
+    },
+    "3": {
+      "created_at": null,
+      "comments": []
+    },
+    "4": {
+      "created_at": null,
+      "comments": []
+    }
+  }
+}
