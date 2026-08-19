@@ -64,7 +64,6 @@
       gap: 1rem;
     }
 
-    /* Counter Bandwidth / Traffic Counter Widget */
     .traffic-badge {
       background: rgba(15, 23, 42, 0.8);
       border: 1px solid var(--border);
@@ -123,7 +122,6 @@
       width: 100%;
     }
 
-    /* Gallery Grid */
     .gallery-header {
       display: flex;
       justify-content: space-between;
@@ -148,11 +146,10 @@
       position: relative;
     }
 
-    /* 9:16 Portrait Aspect Ratio Container */
     .photo-wrapper {
       position: relative;
       width: 100%;
-      padding-top: 177.77%; /* 9:16 aspect ratio */
+      padding-top: 177.77%;
       background-color: #0b0f19;
       overflow: hidden;
     }
@@ -191,7 +188,6 @@
       font-weight: 600;
     }
 
-    /* Comment Section Modular Styles */
     .comment-section {
       padding: 0.85rem 1rem;
       background-color: rgba(15, 23, 42, 0.5);
@@ -249,7 +245,6 @@
       border-color: var(--accent);
     }
 
-    /* Control Panel Drawer */
     .panel-overlay {
       position: fixed;
       inset: 0;
@@ -329,7 +324,7 @@
       overflow: hidden;
       background: #000;
       border: 1px solid var(--border);
-      padding-top: 133.33%; /* 3:4 preview */
+      padding-top: 133.33%;
     }
 
     #webcamVideo {
@@ -371,7 +366,6 @@
       <span id="uiBrandLogo"></span> <span id="uiBrandName"></span>
     </div>
     <div class="header-actions">
-      <!-- Bandwidth Usage Display Badge -->
       <div class="traffic-badge" id="bandwidthBadge" title="Total Bandwidth Terpakai">
         ⚡ <span>0 KB</span>
       </div>
@@ -403,7 +397,6 @@
       <button class="btn btn-secondary" style="padding: 0.25rem 0.5rem;" onclick="togglePanel()">✕</button>
     </div>
 
-    <!-- Stats & Traffic Summary -->
     <div class="form-group">
       <label>Statistik Penggunaan Traffic:</label>
       <div style="background: var(--bg-dark); padding: 0.75rem; border-radius: 0.5rem; border: 1px solid var(--border); font-size: 0.8rem; line-height: 1.5;">
@@ -412,14 +405,12 @@
       </div>
     </div>
 
-    <!-- GitHub Token Input -->
     <div class="form-group">
       <label for="ghToken">GitHub Personal Access Token (PAT):</label>
       <input type="password" id="ghToken" placeholder="Otomatis dari Cloudflare / Input manual" />
       <button class="btn btn-secondary" style="margin-top: 0.25rem;" onclick="saveToken()">Simpan Token Manual</button>
     </div>
 
-    <!-- Live Webcam Preview -->
     <div class="form-group">
       <label>Preview Webcam (Crop 9:16 Portrait):</label>
       <div class="video-preview-wrapper">
@@ -427,13 +418,11 @@
       </div>
     </div>
 
-    <!-- Capture Automation Controls -->
     <div class="form-group" style="gap: 0.75rem;">
       <button class="btn btn-primary" id="btnToggleTimer" onclick="toggleAutoCapture()"></button>
       <button class="btn btn-secondary" onclick="captureAndUploadProcess()">📸 Ambil & Upload Sekarang</button>
     </div>
 
-    <!-- Logs / Status -->
     <div class="form-group">
       <label>Status & Log Eksekusi:</label>
       <div class="status-box" id="logBox"></div>
@@ -443,9 +432,6 @@
   <canvas id="cropCanvas"></canvas>
 
   <script>
-    // ==========================================
-    // ⚙️ KONFIGURASI TERSENTRALISASI & CACHING
-    // ==========================================
     const APP_CONFIG = {
       REPO_OWNER: "tryout-gratis",
       REPO_NAME: "lion",
@@ -453,7 +439,6 @@
       MANIFEST_FILE: "gallery_manifest.json",
       MAX_PHOTOS: 4,
       AUTO_CAPTURE_MINUTES: 5, 
-      // B. Naikkan Interval Auto Refresh ke 60 Detik (Dioptimalkan agar ramah rate-limit)
       AUTO_REFRESH_INTERVAL: 60000,
       CLOUDFLARE_DOMAIN: "seelion.pages.dev",
 
@@ -484,15 +469,13 @@
     let webcamStream = null;
     let photoIndex = parseInt(localStorage.getItem("ring_buffer_photo_index") || "0", 10);
 
-    // Trackers untuk Caching dan Traffic Bandwidth
-    const etagCache = new Map(); // Simpan ETag per resource
+    const etagCache = new Map();
     let totalDownloadedBytes = parseInt(localStorage.getItem("total_downloaded_bytes") || "0", 10);
     let etagHitCounter = parseInt(localStorage.getItem("etag_hit_counter") || "0", 10);
 
     const video = document.getElementById("webcamVideo");
     const canvas = document.getElementById("cropCanvas");
 
-    // Helper Utilitas UTF-8 Base64 Safe
     function safeBtoa(str) {
       return btoa(encodeURIComponent(str).replace(/%([0-9A-F]{2})/g, (match, p1) => String.fromCharCode('0x' + p1)));
     }
@@ -506,7 +489,6 @@
       }
     }
 
-    // 1. Script Hitung Total Bandwidth/Filesize yang Didownload
     function updateTrafficStats(bytesReceived = 0) {
       totalDownloadedBytes += bytesReceived;
       localStorage.setItem("total_downloaded_bytes", totalDownloadedBytes.toString());
@@ -533,7 +515,6 @@
       return parseFloat((bytes / Math.pow(k, i)).toFixed(dm)) + ' ' + sizes[i];
     }
 
-    // A. Fetch Caching Pintar Menggunakan ETag / Header If-None-Match
     async function smartFetch(url, options = {}) {
       const headers = options.headers || {};
       const cachedEtag = etagCache.get(url)?.etag;
@@ -544,7 +525,6 @@
 
       const res = await fetch(url, { ...options, headers });
 
-      // Jika 304 Not Modified -> Ambil data dari Cache Lokal (0 Payload Transferred)
       if (res.status === 304) {
         etagHitCounter++;
         updateTrafficStats(0);
@@ -575,9 +555,7 @@
       return { data: null, notModified: false };
     }
 
-    // C. Konsolidasi File Metadata & Komentar
     const ManifestModule = {
-      // Struktur Manifest Default
       createDefaultManifest() {
         const slots = {};
         for (let i = 1; i <= APP_CONFIG.MAX_PHOTOS; i++) {
@@ -600,6 +578,7 @@
           if (data && data.content) {
             const decoded = safeAtob(data.content);
             const parsed = JSON.parse(decoded || "{}");
+            if (!parsed.slots) parsed.slots = {};
             return { manifest: parsed, sha: data.sha };
           }
         } catch (e) {
@@ -618,9 +597,6 @@
       }
     };
 
-    // ==========================================
-    // 💬 MODUL KOMENTAR (KINI LEBIH EFISIEN SENSUS MANIFEST)
-    // ==========================================
     const CommentModule = {
       async getPublicIP() {
         try {
@@ -640,8 +616,8 @@
         return str.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&#039;");
       },
 
-      renderCommentsFromManifest(comments, cardDOMIndex) {
-        const container = document.getElementById(`comments-list-card-${cardDOMIndex}`);
+      renderCommentsFromManifest(comments, slotNumber) {
+        const container = document.getElementById(`comments-list-slot-${slotNumber}`);
         if (!container) return;
 
         if (!comments || comments.length === 0) {
@@ -657,9 +633,9 @@
         `).join("");
       },
 
-      async postComment(slotNumber, cardDOMIndex) {
+      async postComment(slotNumber) {
         const token = getToken();
-        const input = document.getElementById(`input-card-${cardDOMIndex}`);
+        const input = document.getElementById(`input-slot-${slotNumber}`);
         if (!input) return;
         const text = input.value.trim();
 
@@ -713,16 +689,16 @@
       
       for (let i = 1; i <= APP_CONFIG.MAX_PHOTOS; i++) {
         const cardHtml = `
-          <div class="photo-card" id="card-${i}">
+          <div class="photo-card" id="card-pos-${i}">
             <div class="photo-wrapper"><img src="" alt="Photo Posisi ${i}" onerror="handleImgError(this)" /></div>
             <div class="photo-meta"><span class="badge">-</span><span class="timestamp">-</span></div>
             <div class="comment-section">
-              <div class="comment-list" id="comments-list-card-${i}">
+              <div class="comment-list" id="comments-list-slot-${i}">
                 <span style="color:var(--text-muted); font-size:0.7rem;">Memuat komentar...</span>
               </div>
-              <div class="comment-input-group" id="comment-group-card-${i}">
-                <input type="text" id="input-card-${i}" placeholder="Tulis komentar..." />
-                <button class="btn btn-primary" id="btn-send-card-${i}" style="padding: 0.25rem 0.5rem; font-size: 0.75rem;">Kirim</button>
+              <div class="comment-input-group" id="comment-group-slot-${i}">
+                <input type="text" id="input-slot-${i}" placeholder="Tulis komentar..." />
+                <button class="btn btn-primary" id="btn-send-slot-${i}" style="padding: 0.25rem 0.5rem; font-size: 0.75rem;">Kirim</button>
               </div>
             </div>
           </div>
@@ -745,7 +721,6 @@
       initWebcam();
       refreshGallery();
 
-      // B. Interval Refresh Ditingkatkan
       setInterval(refreshGallery, APP_CONFIG.AUTO_REFRESH_INTERVAL);
     });
 
@@ -899,22 +874,23 @@
         log("Mengambil frame portrait 9:16...", "info");
         const newPhotoBase64 = capturePortraitBase64();
 
+        // Tentukan Slot secara Paksa via Ring Buffer (1 sampai MAX_PHOTOS)
         const targetSlot = (photoIndex % APP_CONFIG.MAX_PHOTOS) + 1;
         const targetPhotoName = `photo_${targetSlot}.jpg`;
 
         log(`[Slot Target ${targetSlot}] Mengunggah foto ke GitHub...`, "info");
 
-        // 1. Upload Foto Baru
+        // 1. Unggah/Overwrite Foto Baru
         const photoFileInfo = await fetchFileInfo(targetPhotoName, token);
         await uploadFileToGitHub(targetPhotoName, newPhotoBase64, token, photoFileInfo ? photoFileInfo.sha : null);
 
-        // 2. Konsolidasi Manifest: Update Timestamp & Reset Komentar Slot Terkait
+        // 2. Perbarui Timestamp dan Reset Komentar di Slot Terkait
         log(`[Slot Target ${targetSlot}] Memperbarui manifest terpusat...`, "info");
         const { manifest, sha } = await ManifestModule.getManifest(token);
 
         manifest.slots[targetSlot] = {
           created_at: new Date().toISOString(),
-          comments: [] // Auto-reset komentar saat foto ditimpa
+          comments: []
         };
 
         await ManifestModule.saveManifest(manifest, sha, token);
@@ -922,9 +898,9 @@
         photoIndex++;
         localStorage.setItem("ring_buffer_photo_index", photoIndex.toString());
 
-        log(`[Berhasil] Foto baru diunggah di Slot ${targetSlot}!`, "success");
+        log(`[Berhasil] Foto baru diunggah & menimpa Slot ${targetSlot}!`, "success");
         
-        setTimeout(() => refreshGallery(true), 2000);
+        setTimeout(() => refreshGallery(true), 1500);
       } catch (err) {
         log("Error: " + err.message, "error");
       }
@@ -955,7 +931,6 @@
     async function refreshGallery(forceRefresh = false) {
       const token = getToken();
 
-      // C. Konsolidasi Metadata: Cukup Fetch 1 File Manifest Terpusat (Hemat Request)
       const { manifest } = await ManifestModule.getManifest(token);
       const slotsData = [];
 
@@ -980,9 +955,14 @@
             isValid = true;
           }
 
+          // Fallback jika foto ada tetapi belum punya timestamp
+          if (isValid && createdAt === 0) {
+            createdAt = Date.now();
+          }
+
           slotsData.push({
             slot: i,
-            timestamp: createdAt > 0 ? createdAt : (isValid ? 1 : 0),
+            timestamp: createdAt,
             src: photoSrc,
             valid: isValid,
             comments: slotManifest ? slotManifest.comments || [] : []
@@ -992,45 +972,52 @@
         }
       }
 
-      // FIFO Sorting berdasarkan Timestamp
+      // Urutkan FIFO (terbaru berada di atas/pertama)
       slotsData.sort((a, b) => b.timestamp - a.timestamp);
 
+      // Render sesuai urutan timestamp ke kontainer visual DOM
       slotsData.forEach((item, index) => {
         const cardDOMIndex = index + 1;
-        const card = document.getElementById(`card-${cardDOMIndex}`);
+        const card = document.getElementById(`card-pos-${cardDOMIndex}`);
         if (!card) return;
         
         const img = card.querySelector("img");
         const badge = card.querySelector(".badge");
         const timeLabel = card.querySelector(".timestamp");
+        const commentListDiv = card.querySelector(".comment-list");
+        const inputElem = card.querySelector("input");
+        const btnElem = card.querySelector("button.btn-primary");
+
+        // Tautkan ID spesifik Slot Asli ke elemen DOM yang sedang aktif
+        if (commentListDiv) commentListDiv.id = `comments-list-slot-${item.slot}`;
+        if (inputElem) inputElem.id = `input-slot-${item.slot}`;
+        if (btnElem) {
+          btnElem.id = `btn-send-slot-${item.slot}`;
+          btnElem.onclick = () => CommentModule.postComment(item.slot);
+        }
+        if (inputElem) {
+          inputElem.onkeydown = (e) => {
+            if (e.key === "Enter") CommentModule.postComment(item.slot);
+          };
+        }
 
         if (item.valid && item.src) {
           img.src = item.src;
           badge.textContent = index === 0 ? APP_CONFIG.BADGE_LATEST : `${APP_CONFIG.BADGE_OLDER_PREFIX}${index + 1}`;
           
-          if (item.timestamp > 1) {
+          if (item.timestamp > 0) {
             const dateObj = new Date(item.timestamp);
             timeLabel.textContent = dateObj.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
           } else {
             timeLabel.textContent = `Slot #${item.slot}`;
           }
           
-          CommentModule.renderCommentsFromManifest(item.comments, cardDOMIndex);
-
-          const input = document.getElementById(`input-card-${cardDOMIndex}`);
-          const btn = document.getElementById(`btn-send-card-${cardDOMIndex}`);
-
-          if (input && btn) {
-            input.onkeydown = (e) => {
-              if (e.key === "Enter") CommentModule.postComment(item.slot, cardDOMIndex);
-            };
-            btn.onclick = () => CommentModule.postComment(item.slot, cardDOMIndex);
-          }
+          CommentModule.renderCommentsFromManifest(item.comments, item.slot);
         } else {
           handleImgError(img);
-          badge.textContent = `${APP_CONFIG.BADGE_OLDER_PREFIX}${cardDOMIndex}`;
+          badge.textContent = `${APP_CONFIG.BADGE_OLDER_PREFIX}${index + 1}`;
           timeLabel.textContent = "Kosong";
-          CommentModule.renderCommentsFromManifest(item.comments, cardDOMIndex);
+          CommentModule.renderCommentsFromManifest(item.comments, item.slot);
         }
       });
     }
