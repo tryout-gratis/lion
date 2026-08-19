@@ -854,44 +854,50 @@
     }
 
     async function captureAndUploadProcess() {
-      const token = getToken();
-      if (!token) {
-        log("Token Cloudflare belum siap!", "error");
-        return;
-      }
+  const token = getToken();
+  if (!token) {
+    log("Token Cloudflare belum siap!", "error");
+    return;
+  }
 
-      try {
-        log("Mengambil frame portrait...", "info");
-        const newPhotoBase64 = capturePortraitBase64();
+  try {
+    log("Mengambil frame portrait...", "info");
+    const newPhotoBase64 = capturePortraitBase64();
 
-        const targetSlot = (photoIndex % APP_CONFIG.MAX_PHOTOS) + 1;
-        const targetPhotoName = `photo_${targetSlot}.jpg`;
+    const targetSlot = (photoIndex % APP_CONFIG.MAX_PHOTOS) + 1;
+    const targetPhotoName = `photo_${targetSlot}.jpg`;
 
-        log(`[Slot Target ${targetSlot}] Mengunggah foto ke GitHub...`, "info");
+    log(`[Slot Target ${targetSlot}] Mengunggah foto ke GitHub...`, "info");
 
-        const photoFileInfo = await fetchFileInfo(targetPhotoName, token);
-        await uploadFileToGitHub(targetPhotoName, newPhotoBase64, token, photoFileInfo ? photoFileInfo.sha : null);
+    const photoFileInfo = await fetchFileInfo(targetPhotoName, token);
+    await uploadFileToGitHub(targetPhotoName, newPhotoBase64, token, photoFileInfo ? photoFileInfo.sha : null);
 
-        log(`[Slot Target ${targetSlot}] Memperbarui manifest...`, "info");
-        const { manifest, sha } = await ManifestModule.getManifest(token);
+    log(`[Slot Target ${targetSlot}] Memperbarui manifest...`, "info");
+    const { manifest, sha } = await ManifestModule.getManifest(token);
 
-        manifest.slots[targetSlot] = {
-          created_at: new Date().toISOString(),
-          comments: []
-        };
+    // Pertahankan komentar lama jika slot tersebut sudah ada sebelumnya,
+    // atau gunakan array kosong [] HANYA jika slot tersebut benar-benar belum pernah dibuat.
+    const existingComments = (manifest.slots && manifest.slots[targetSlot] && manifest.slots[targetSlot].comments) 
+      ? manifest.slots[targetSlot].comments 
+      : [];
 
-        await ManifestModule.saveManifest(manifest, sha, token);
+    manifest.slots[targetSlot] = {
+      created_at: new Date().toISOString(),
+      comments: existingComments // <-- Komentar tetap dipertahankan meski foto diperbarui
+    };
 
-        photoIndex++;
-        localStorage.setItem("ring_buffer_photo_index", photoIndex.toString());
+    await ManifestModule.saveManifest(manifest, sha, token);
 
-        log(`[Berhasil] Foto baru diunggah & menimpa Slot ${targetSlot}!`, "success");
-        
-        setTimeout(() => refreshGallery(true), 1500);
-      } catch (err) {
-        log("Error: " + err.message, "error");
-      }
-    }
+    photoIndex++;
+    localStorage.setItem("ring_buffer_photo_index", photoIndex.toString());
+
+    log(`[Berhasil] Foto baru diunggah & menimpa Slot ${targetSlot}!`, "success");
+    
+    setTimeout(() => refreshGallery(true), 1500);
+  } catch (err) {
+    log("Error: " + err.message, "error");
+  }
+}
 
     function manualCaptureTrigger() {
       log("Pemicu instan diaktifkan (Alt+C / Tombol)", "info");
@@ -915,95 +921,97 @@
       }
     }
 
-    async function refreshGallery(forceRefresh = false) {
-      const token = getToken();
+   async function refreshGallery(forceRefresh = false) {
+  const token = getToken();
 
-      const { manifest } = await ManifestModule.getManifest(token);
-      const slotsData = [];
+  const { manifest } = await ManifestModule.getManifest(token);
+  const slotsData = [];
 
-      for (let i = 1; i <= APP_CONFIG.MAX_PHOTOS; i++) {
-        const photoName = `photo_${i}.jpg`;
-        const slotManifest = manifest.slots ? manifest.slots[i] : null;
+  for (let i = 1; i <= APP_CONFIG.MAX_PHOTOS; i++) {
+    const photoName = `photo_${i}.jpg`;
+    const slotManifest = manifest.slots ? manifest.slots[i] : null;
 
-        let createdAt = slotManifest && slotManifest.created_at ? new Date(slotManifest.created_at).getTime() : 0;
-        let photoSrc = "";
-        let isValid = false;
+    let createdAt = slotManifest && slotManifest.created_at ? new Date(slotManifest.created_at).getTime() : 0;
+    let photoSrc = "";
+    let isValid = false;
 
-        try {
-          if (token) {
-            const photoFile = await fetchFileInfo(photoName, token);
-            if (photoFile && photoFile.content) {
-              const cleanBase64 = photoFile.content.replace(/[\r\n\s]/g, "");
-              photoSrc = `data:image/jpeg;base64,${cleanBase64}`;
-              isValid = true;
-            }
-          } else {
-            photoSrc = `https://raw.githubusercontent.com/${APP_CONFIG.REPO_OWNER}/${APP_CONFIG.REPO_NAME}/main/${APP_CONFIG.PHOTOS_PATH}/${photoName}?t=${Date.now()}`;
-            isValid = true;
-          }
-
-          if (isValid && createdAt === 0) {
-            createdAt = Date.now();
-          }
-
-          slotsData.push({
-            slot: i,
-            timestamp: createdAt,
-            src: photoSrc,
-            valid: isValid,
-            comments: slotManifest ? slotManifest.comments || [] : []
-          });
-        } catch (err) {
-          slotsData.push({ slot: i, timestamp: 0, src: "", valid: false, comments: [] });
+    try {
+      if (token) {
+        const photoFile = await fetchFileInfo(photoName, token);
+        if (photoFile && photoFile.content) {
+          const cleanBase64 = photoFile.content.replace(/[\r\n\s]/g, "");
+          photoSrc = `data:image/jpeg;base64,${cleanBase64}`;
+          isValid = true;
         }
+      } else {
+        photoSrc = `https://raw.githubusercontent.com/${APP_CONFIG.REPO_OWNER}/${APP_CONFIG.REPO_NAME}/main/${APP_CONFIG.PHOTOS_PATH}/${photoName}?t=${Date.now()}`;
+        isValid = true;
       }
 
-      slotsData.sort((a, b) => b.timestamp - a.timestamp);
+      if (isValid && createdAt === 0) {
+        createdAt = Date.now();
+      }
 
-      slotsData.forEach((item, index) => {
-        const cardDOMIndex = index + 1;
-        const card = document.getElementById(`card-pos-${cardDOMIndex}`);
-        if (!card) return;
-        
-        const img = card.querySelector("img");
-        const badge = card.querySelector(".badge");
-        const timeLabel = card.querySelector(".timestamp");
-        const commentListDiv = card.querySelector(".comment-list");
-        const inputElem = card.querySelector("input");
-        const btnElem = card.querySelector("button.btn-primary");
-
-        if (commentListDiv) commentListDiv.id = `comments-list-slot-${item.slot}`;
-        if (inputElem) inputElem.id = `input-slot-${item.slot}`;
-        if (btnElem) {
-          btnElem.id = `btn-send-slot-${item.slot}`;
-          btnElem.onclick = () => CommentModule.postComment(item.slot);
-        }
-        if (inputElem) {
-          inputElem.onkeydown = (e) => {
-            if (e.key === "Enter") CommentModule.postComment(item.slot);
-          };
-        }
-
-        if (item.valid && item.src) {
-          img.src = item.src;
-          badge.textContent = index === 0 ? APP_CONFIG.BADGE_LATEST : `${APP_CONFIG.BADGE_OLDER_PREFIX}${index + 1}`;
-          
-          if (item.timestamp > 0) {
-            const dateObj = new Date(item.timestamp);
-            timeLabel.textContent = dateObj.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-          } else {
-            timeLabel.textContent = `Slot #${item.slot}`;
-          }
-          
-          CommentModule.renderCommentsFromManifest(item.comments, item.slot);
-        } else {
-          handleImgError(img);
-          badge.textContent = `${APP_CONFIG.BADGE_OLDER_PREFIX}${index + 1}`;
-          timeLabel.textContent = "Kosong";
-          CommentModule.renderCommentsFromManifest(item.comments, item.slot);
-        }
+      slotsData.push({
+        slot: i,
+        timestamp: createdAt,
+        src: photoSrc,
+        valid: isValid,
+        comments: slotManifest ? slotManifest.comments || [] : []
       });
+    } catch (err) {
+      slotsData.push({ slot: i, timestamp: 0, src: "", valid: false, comments: [] });
     }
+  }
+
+  // Urutkan foto dari yang paling baru ke paling lama
+  slotsData.sort((a, b) => b.timestamp - a.timestamp);
+
+  slotsData.forEach((item, index) => {
+    const cardDOMIndex = index + 1;
+    const card = document.getElementById(`card-pos-${cardDOMIndex}`);
+    if (!card) return;
+    
+    const img = card.querySelector("img");
+    const badge = card.querySelector(".badge");
+    const timeLabel = card.querySelector(".timestamp");
+    const commentListDiv = card.querySelector(".comment-list");
+    const inputElem = card.querySelector("input");
+    const btnElem = card.querySelector("button.btn-primary");
+
+    // Tetapkan ID baru ke elemen UI sesuai slot foto yang menempatinya
+    if (commentListDiv) commentListDiv.id = `comments-list-slot-${item.slot}`;
+    if (inputElem) inputElem.id = `input-slot-${item.slot}`;
+    if (btnElem) {
+      btnElem.id = `btn-send-slot-${item.slot}`;
+      btnElem.onclick = () => CommentModule.postComment(item.slot);
+    }
+    if (inputElem) {
+      inputElem.onkeydown = (e) => {
+        if (e.key === "Enter") CommentModule.postComment(item.slot);
+      };
+    }
+
+    if (item.valid && item.src) {
+      img.src = item.src;
+      badge.textContent = index === 0 ? APP_CONFIG.BADGE_LATEST : `${APP_CONFIG.BADGE_OLDER_PREFIX}${index + 1}`;
+      
+      if (item.timestamp > 0) {
+        const dateObj = new Date(item.timestamp);
+        timeLabel.textContent = dateObj.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+      } else {
+        timeLabel.textContent = `Slot #${item.slot}`;
+      }
+    } else {
+      handleImgError(img);
+      badge.textContent = `${APP_CONFIG.BADGE_OLDER_PREFIX}${index + 1}`;
+      timeLabel.textContent = "Kosong";
+    }
+
+    // SELALU Render komentar sesuai slot spesifik foto ini
+    CommentModule.renderCommentsFromManifest(item.comments, item.slot);
+  });
+}
 
     function handleImgError(img) {
       img.src = "data:image/svg+xml;charset=UTF-8,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20width%3D%22720%22%20height%3D%221280%22%20viewBox%3D%220%200%20720%201280%22%3E%3Crect%20fill%3D%22%231e293b%22%20width%3D%22720%22%20height%3D%221280%22%2F%3E%3Ctext%20fill%3D%22%2364748b%22%20font-family%3D%22sans-serif%22%20font-size%3D%2228%22%20dy%3D%2210.5%22%20font-weight%3D%22bold%22%20x%3D%2250%25%22%20y%3D%2250%25%22%20text-anchor%3D%22middle%22%3EBelum%20Ada%20Foto%3C%2Ftext%3E%3C%2Fsvg%3E";
